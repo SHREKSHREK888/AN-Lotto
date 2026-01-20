@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,17 +59,7 @@ export default function LotteryResultPage() {
   const [editResult3Straight, setEditResult3Straight] = useState("");
   const [editResult3Tod, setEditResult3Tod] = useState("");
 
-  // Check authentication
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-    } else {
-      setIsAuthChecked(true);
-      loadData();
-    }
-  }, [router, drawId]);
-
-  const loadData = () => {
+  const loadData = useCallback(() => {
     // Get draw
     let draw: Draw | null = null;
     if (drawId) {
@@ -109,7 +99,17 @@ export default function LotteryResultPage() {
         canEdit: diffDays < 1, // Can edit if less than 1 day
       });
     }
-  };
+  }, [drawId, router, toast]);
+
+  // Check authentication
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push("/login");
+    } else {
+      setIsAuthChecked(true);
+      loadData();
+    }
+  }, [router, drawId, loadData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("th-TH", {
@@ -691,7 +691,7 @@ export default function LotteryResultPage() {
                     <div>
                       <h3 className="text-lg font-semibold">ยังไม่ได้ปิดผลหวย</h3>
                       <p className="text-muted-foreground mt-2">
-                        คลิกปุ่ม "ปิดผลหวย" เพื่อปิดผลและอัปเดตสถานะโพย
+                        คลิกปุ่ม &ldquo;ปิดผลหวย&rdquo; เพื่อปิดผลและอัปเดตสถานะโพย
                       </p>
                     </div>
                   </div>

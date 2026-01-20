@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,17 +30,7 @@ export default function PaymentPage() {
   const [currentDraw, setCurrentDraw] = useState<Draw | null>(null);
   const [slips, setSlips] = useState<Slip[]>([]);
 
-  // Check authentication
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push("/login");
-    } else {
-      setIsAuthChecked(true);
-      loadData();
-    }
-  }, [router, drawId]);
-
-  const loadData = () => {
+  const loadData = useCallback(() => {
     if (!drawId) {
       toast({
         variant: "destructive",
@@ -68,7 +58,17 @@ export default function PaymentPage() {
     const allSlips = getSlips();
     const drawSlips = allSlips.filter(slip => slip.drawId === draw.id);
     setSlips(drawSlips);
-  };
+  }, [drawId, router, toast]);
+
+  // Check authentication
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push("/login");
+    } else {
+      setIsAuthChecked(true);
+      loadData();
+    }
+  }, [router, drawId, loadData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("th-TH", {

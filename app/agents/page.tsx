@@ -505,7 +505,7 @@ export default function AgentsPage() {
             {agents.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <p>ยังไม่มีเจ้ามือ</p>
-                <p className="text-sm mt-2">คลิกปุ่ม "เพิ่มเจ้ามือ" เพื่อเพิ่มรายการ</p>
+                <p className="text-sm mt-2">คลิกปุ่ม &ldquo;เพิ่มเจ้ามือ&rdquo; เพื่อเพิ่มรายการ</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

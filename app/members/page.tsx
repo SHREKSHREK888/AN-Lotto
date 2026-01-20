@@ -836,7 +836,7 @@ export default function MembersPage() {
           <DialogHeader>
             <DialogTitle>ยืนยันการลบ</DialogTitle>
             <DialogDescription>
-              คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิก "{selectedMember?.name}"?
+              คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิก &ldquo;{selectedMember?.name}&rdquo;?
               <br />
               การกระทำนี้ไม่สามารถย้อนกลับได้
             </DialogDescription>
