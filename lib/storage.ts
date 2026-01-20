@@ -2,6 +2,7 @@ import { Slip } from "./mockData";
 
 const STORAGE_KEY = "lotto_slips";
 const AGENTS_KEY = "agents";
+const MEMBERS_KEY = "lotto_members";
 
 export interface Agent {
   id: string;
@@ -82,5 +83,37 @@ export function updateSlipAgent(slipId: string, agentId?: string, agentName?: st
     slip.agentId = agentId;
     slip.agentName = agentName;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existingSlips));
+  }
+}
+
+export interface Member {
+  id: string;
+  username: string;
+  name: string;
+  email?: string;
+  password: string; // Hashed password
+  role: "admin" | "user";
+  status: "active" | "inactive";
+  permissions?: {
+    canViewSlips?: boolean;
+    canCreateSlips?: boolean;
+    canEditSlips?: boolean;
+    canDeleteSlips?: boolean;
+    canManageAgents?: boolean;
+    canManageMembers?: boolean;
+    canViewReports?: boolean;
+    canManageSettings?: boolean;
+  };
+  createdAt: string;
+}
+
+export function getMembers(): Member[] {
+  if (typeof window === "undefined") return [];
+  const stored = localStorage.getItem(MEMBERS_KEY);
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return [];
   }
 }

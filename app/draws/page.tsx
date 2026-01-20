@@ -255,8 +255,8 @@ export default function DrawsPage() {
           if (digits.length === 3 && resultDigits.length === 3) {
             const allDigitsMatch = digits.every(d => resultDigits.includes(d));
             const countsMatch = digits.every(d => {
-              const countInNumber = digits.filter(x => x === d).length;
-              const countInResult = resultDigits.filter(x => x === d).length;
+              const countInNumber = digits.filter((x: string) => x === d).length;
+              const countInResult = resultDigits.filter((x: string) => x === d).length;
               return countInNumber <= countInResult;
             });
             if (allDigitsMatch && countsMatch) {

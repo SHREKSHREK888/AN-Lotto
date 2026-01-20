@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Lock, User, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { logActivity } from "@/lib/activity-log";
-import { getMembers } from "@/lib/storage";
+import { getMembers, Member } from "@/lib/storage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function LoginPage() {
     ];
 
     // Find member by username
-    const member = members.find((m) => m.username.toLowerCase() === username.toLowerCase());
+    const member = members.find((m: Member) => m.username.toLowerCase() === username.toLowerCase());
     
     let isValid = false;
     let userRole: "admin" | "user" = "user";
