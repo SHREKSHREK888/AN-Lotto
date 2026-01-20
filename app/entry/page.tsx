@@ -474,10 +474,10 @@ export default function EntryPage() {
             case "2 ตัวกลับ":
             case "2 กลับ (3 ตัว)":
               bannedList = item.type === "2 ตัวบน" 
-                ? selectedAgent.bannedNumbers["2 ตัวบน"]
+                ? selectedAgent.bannedNumbers?.["2 ตัวบน"]
                 : item.type === "2 ตัวล่าง"
-                ? selectedAgent.bannedNumbers["2 ตัวล่าง"]
-                : selectedAgent.bannedNumbers["2 ตัวบน"] || selectedAgent.bannedNumbers["2 ตัวล่าง"];
+                ? selectedAgent.bannedNumbers?.["2 ตัวล่าง"]
+                : selectedAgent.bannedNumbers?.["2 ตัวบน"] || selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
               if (bannedList) {
                 const normalizedNumber = number.padStart(2, "0");
                 const normalizedBanned = bannedList.map(n => n.padStart(2, "0"));
@@ -489,7 +489,7 @@ export default function EntryPage() {
             case "3 ตัวตรง":
             case "3 ตัวบน":
             case "3 กลับ":
-              bannedList = selectedAgent.bannedNumbers["3 ตัวตรง"];
+              bannedList = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
               if (bannedList) {
                 const normalizedNumber = number.padStart(3, "0");
                 const normalizedBanned = bannedList.map(n => n.padStart(3, "0"));
@@ -500,7 +500,7 @@ export default function EntryPage() {
               break;
             case "3 ตัวโต๊ด":
             case "ชุด":
-              bannedList = selectedAgent.bannedNumbers["3 ตัวโต๊ด"];
+              bannedList = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
               if (bannedList) {
                 const normalizedNumber = number.padStart(3, "0");
                 const normalizedBanned = bannedList.map(n => n.padStart(3, "0"));
@@ -512,7 +512,7 @@ export default function EntryPage() {
             case "วิ่ง":
             case "วิ่งบน":
             case "วิ่งล่าง":
-              bannedList = selectedAgent.bannedNumbers["วิ่ง"];
+              bannedList = selectedAgent.bannedNumbers?.["วิ่ง"];
               if (bannedList && bannedList.includes(number)) {
                 agentBannedItems.push(item);
               }
