@@ -53,7 +53,7 @@ export interface Member {
 
 const MEMBERS_KEY = "lotto_members";
 
-export function getMembers(): Member[] {
+function getMembers(): Member[] {
   if (typeof window === "undefined") return [];
   const stored = localStorage.getItem(MEMBERS_KEY);
   if (!stored) return [];
@@ -64,7 +64,7 @@ export function getMembers(): Member[] {
   }
 }
 
-export function saveMember(member: Member): void {
+function saveMember(member: Member): void {
   const existingMembers = getMembers();
   const index = existingMembers.findIndex((m) => m.id === member.id);
   if (index >= 0) {
@@ -75,7 +75,7 @@ export function saveMember(member: Member): void {
   localStorage.setItem(MEMBERS_KEY, JSON.stringify(existingMembers));
 }
 
-export function deleteMember(memberId: string): void {
+function deleteMember(memberId: string): void {
   const existingMembers = getMembers();
   const filtered = existingMembers.filter((m) => m.id !== memberId);
   localStorage.setItem(MEMBERS_KEY, JSON.stringify(filtered));
