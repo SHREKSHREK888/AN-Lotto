@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Lock, User, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { logActivity } from "@/lib/activity-log";
-import { getMembers, Member } from "@/app/members/page";
+import { getMembers } from "@/lib/storage";
 
 export default function LoginPage() {
   const router = useRouter();
