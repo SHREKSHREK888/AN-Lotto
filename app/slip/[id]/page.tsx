@@ -510,7 +510,7 @@ export default function SlipDetailPage() {
             if (clonedHead) {
               // Copy all style and link tags from original document
               const originalHead = document.head;
-              originalHead.querySelectorAll("link[rel='stylesheet'], style").forEach((link) => {
+              originalHead.querySelectorAll('link[rel="stylesheet"], style').forEach((link) => {
                 try {
                   clonedHead.appendChild(link.cloneNode(true));
                 } catch (e) {
