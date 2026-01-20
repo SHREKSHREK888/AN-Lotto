@@ -267,7 +267,7 @@ export default function EntryPage() {
         // Reset inputs
         setNumber3Straight("");
         setAmount3Straight("");
-        setReverseStraight(false);
+        setReverseStraight("ไม่กลับ");
         return;
       }
     }
