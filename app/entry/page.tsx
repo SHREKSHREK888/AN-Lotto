@@ -908,8 +908,7 @@ export default function EntryPage() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && number3Straight.length === 3 && amount3Straight && parseFloat(amount3Straight) > 0) {
                                 e.preventDefault();
-                                const reverseOption = reverseStraight === "3 กลับ" ? { reverseCount: 3 } : 
-                                                     reverseStraight === "6 กลับ" ? { reverseCount: 6 } : false;
+                                const reverseOption = reverseStraight === "3 กลับ" || reverseStraight === "6 กลับ" ? true : false;
                                 addItem("3 ตัวตรง", number3Straight, amount3Straight, reverseOption);
                                 setNumber3Straight("");
                               }
@@ -927,8 +926,7 @@ export default function EntryPage() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && number3Straight.length === 3 && amount3Straight && parseFloat(amount3Straight) > 0) {
                                 e.preventDefault();
-                                const reverseOption = reverseStraight === "3 กลับ" ? { reverseCount: 3 } : 
-                                                     reverseStraight === "6 กลับ" ? { reverseCount: 6 } : false;
+                                const reverseOption = reverseStraight === "3 กลับ" || reverseStraight === "6 กลับ" ? true : false;
                                 addItem("3 ตัวตรง", number3Straight, amount3Straight, reverseOption);
                                 setNumber3Straight("");
                               }
@@ -941,8 +939,7 @@ export default function EntryPage() {
                             size="sm"
                             onClick={() => {
                               if (number3Straight && number3Straight.length === 3 && amount3Straight && parseFloat(amount3Straight) > 0) {
-                                const reverseOption = reverseStraight === "3 กลับ" ? { reverseCount: 3 } : 
-                                                     reverseStraight === "6 กลับ" ? { reverseCount: 6 } : false;
+                                const reverseOption = reverseStraight === "3 กลับ" || reverseStraight === "6 กลับ" ? true : false;
                                 addItem("3 ตัวตรง", number3Straight, amount3Straight, reverseOption);
                                 setNumber3Straight("");
                               }
