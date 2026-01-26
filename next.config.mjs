@@ -10,6 +10,11 @@ const nextConfig = {
         canvas: false,
       };
     }
+    // Exclude an-lotto folder from build
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ['**/an-lotto/**'],
+    };
     return config;
   },
 };
