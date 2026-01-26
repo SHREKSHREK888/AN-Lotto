@@ -338,6 +338,53 @@ const colorMap: Record<string, Record<string, string>> = {
   zinc: { 600: "#52525b", 700: "#3f3f46", 800: "#27272a" },
 };
 
+// Helper to convert Hex to HSL
+function hexToHsl(hex: string): string {
+  // Remove hash if present
+  hex = hex.replace(/^#/, "");
+
+  // Parse r, g, b
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+
+  // Normalize
+  r /= 255;
+  g /= 255;
+  b /= 255;
+
+  // Find greatest and smallest channel values
+  let cmin = Math.min(r, g, b),
+    cmax = Math.max(r, g, b),
+    delta = cmax - cmin,
+    h = 0,
+    s = 0,
+    l = 0;
+
+  // Calculate hue
+  if (delta == 0) h = 0;
+  else if (cmax == r) h = ((g - b) / delta) % 6;
+  else if (cmax == g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+
+  h = Math.round(h * 60);
+
+  // Make negative hues positive behind 360°
+  if (h < 0) h += 360;
+
+  // Calculate lightness
+  l = (cmax + cmin) / 2;
+
+  // Calculate saturation
+  if (delta == 0) s = 0;
+  else s = delta / (1 - Math.abs(2 * l - 1));
+
+  s = +(s * 100).toFixed(1);
+  l = +(l * 100).toFixed(1);
+
+  return `${h} ${s}% ${l}%`;
+}
+
 export function applyTheme(themeId: string): void {
   if (typeof window === "undefined") return;
   const theme = themes.find((t) => t.id === themeId);
@@ -345,18 +392,36 @@ export function applyTheme(themeId: string): void {
 
   const root = document.documentElement;
   root.setAttribute("data-theme", themeId);
-  
+
   // Extract base color name (e.g., "red" from "red-600")
   const baseColor = theme.colors.primary.split("-")[0];
   const colors = colorMap[baseColor] || colorMap.red;
-  
-  // Set CSS variables for theme colors
+
+  // Set CSS variables for theme colors (Custom variables)
   root.style.setProperty("--theme-primary", colors[600]);
   root.style.setProperty("--theme-primary-hover", colors[700]);
   root.style.setProperty("--theme-primary-dark", colors[800]);
   root.style.setProperty("--theme-sidebar-from", colors[700]);
   root.style.setProperty("--theme-sidebar-to", colors[800]);
-  
+
+  // Update Tailwind CSS variables (HSL)
+  const primaryHsl = hexToHsl(colors[600]);
+  const primaryHoverHsl = hexToHsl(colors[700]);
+
+  root.style.setProperty("--primary", primaryHsl);
+  root.style.setProperty("--ring", primaryHsl);
+
+  // Set background glow variables (using CSS Level 4 syntax: hsl(H S L / A))
+  root.style.setProperty("--glow-1", `hsl(${primaryHsl} / 0.15)`);
+  root.style.setProperty("--glow-2", `hsl(${primaryHoverHsl} / 0.15)`);
+
+  // Optional: Update Chart colors if needed, picking from the palette
+  // root.style.setProperty("--chart-1", primaryHsl);
+
+  // Update background ambient glow if using variables in globals.css
+  // Note: globals.css uses standard gradients, we might need to adjust them if we want the glow to change
+  // For now, updating --primary will affect buttons, active states, text-primary etc.
+
   // Dispatch custom event for theme change
   window.dispatchEvent(new CustomEvent("themechange", { detail: { themeId, theme } }));
 }

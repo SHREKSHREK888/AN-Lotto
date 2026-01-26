@@ -6,6 +6,8 @@ import { isAuthenticated } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Slip } from "@/lib/mockData";
 import { getSlips, updateSlipStatus, getAgents, Agent } from "@/lib/storage";
+import { getDrawById, getCurrentDraw, getDraws, Draw } from "@/lib/draw";
+import { calculateSlipPayout } from "@/lib/payout";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { RecentSlipsTable } from "@/components/dashboard/recent-slips-table";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -54,10 +56,10 @@ export default function DashboardPage() {
       const loadData = () => {
         const saved = getSlips();
         setStoredSlips(saved);
-        
+
         const savedAgents = getAgents();
         setAgents(savedAgents || []);
-        
+
         try {
           const savedSends = localStorage.getItem("agent_sends");
           setSendHistory(savedSends ? JSON.parse(savedSends) : []);
@@ -65,37 +67,37 @@ export default function DashboardPage() {
           setSendHistory([]);
         }
       };
-      
+
       // Load data immediately
       loadData();
-      
+
       // Listen for storage events from other tabs/windows
       const handleStorageChange = () => {
         setTimeout(loadData, 100);
       };
       window.addEventListener("storage", handleStorageChange);
-      
+
       // Also listen for custom storage events from same window (triggered by saveSlip)
       const handleCustomStorage = () => {
         setTimeout(loadData, 100);
       };
-      
+
       // Listen for both native and custom storage events
       window.addEventListener("storage", handleCustomStorage);
-      
+
       // Poll for changes when window is focused (for same-tab updates)
       const handleFocus = () => {
         loadData();
       };
       window.addEventListener("focus", handleFocus);
-      
+
       // Reload when page becomes visible
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) {
           loadData();
         }
       });
-      
+
       return () => {
         window.removeEventListener("storage", handleStorageChange);
         window.removeEventListener("storage", handleCustomStorage);
@@ -103,17 +105,17 @@ export default function DashboardPage() {
       };
     }
   }, [isAuthChecked]);
-  
+
   // Reload data when component becomes visible (after navigation)
   useEffect(() => {
     if (isAuthChecked && typeof window !== "undefined") {
       const loadData = () => {
         const saved = getSlips();
         setStoredSlips(saved);
-        
+
         const savedAgents = getAgents();
         setAgents(savedAgents || []);
-        
+
         try {
           const savedSends = localStorage.getItem("agent_sends");
           setSendHistory(savedSends ? JSON.parse(savedSends) : []);
@@ -121,10 +123,10 @@ export default function DashboardPage() {
           setSendHistory([]);
         }
       };
-      
+
       // Small delay to ensure we're getting the latest data after navigation
       const timeoutId = setTimeout(loadData, 200);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [isAuthChecked]);
@@ -150,10 +152,24 @@ export default function DashboardPage() {
   }, [storedSlips]);
 
   const totalPayout = useMemo(() => {
+    const draws = getDraws();
     return storedSlips
       .filter((slip) => slip.status === "ถูกรางวัล" || slip.status === "จ่ายแล้ว")
-      .reduce((sum, slip) => sum + (slip.totalAmount * 0.8), 0);
-  }, [storedSlips]);
+      .reduce((sum, slip) => {
+        // Find draw and result for this slip
+        const draw = slip.drawId ? getDrawById(slip.drawId) : getCurrentDraw();
+        const result = draw?.result || null;
+        
+        // Find agent for this slip
+        const agent = slip.agentId ? agents.find(a => a.id === slip.agentId) ?? null : null;
+        
+        if (result) {
+          return sum + calculateSlipPayout(slip, result, agent, draw);
+        }
+        // Fallback to old calculation if no result
+        return sum + (slip.totalAmount * 0.8);
+      }, 0);
+  }, [storedSlips, agents]);
 
   const profit = useMemo(() => {
     return totalSales - totalPayout;
@@ -197,7 +213,7 @@ export default function DashboardPage() {
       });
       return;
     }
-    
+
     const headers = ["เลขที่โพย", "ชื่อลูกค้า", "ยอดรวม", "สถานะ", "วันที่บันทึก"];
     const rows = slips.map(slip => [
       slip.slipNumber,
@@ -206,12 +222,12 @@ export default function DashboardPage() {
       slip.status,
       new Date(slip.createdAtISO).toLocaleString("th-TH")
     ]);
-    
+
     const csvContent = [
       headers.join(","),
       ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
     ].join("\n");
-    
+
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -221,7 +237,7 @@ export default function DashboardPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     toast({
       variant: "success",
       title: "สำเร็จ",
@@ -234,65 +250,49 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-7xl space-y-6 w-full">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight text-red-700">แดชบอร์ด</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">แดชบอร์ด</h1>
         </div>
 
         {/* System Summary */}
-        <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+        <Card className="glass-card border-none relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -z-10 -translate-y-1/2 translate-x-1/2" />
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-foreground">
+              <BarChart3 className="h-5 w-5 text-primary" />
               สรุประบบทั้งหมด
             </CardTitle>
-            <CardDescription>ข้อมูลสรุปของระบบทั้งหมด</CardDescription>
+            <CardDescription className="text-muted-foreground">ข้อมูลสรุปของระบบทั้งหมด</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {/* สรุปโพย */}
-              <div className="space-y-3">
+              <div className="space-y-4 p-4 rounded-xl bg-muted/30 dark:bg-white/5 border border-border dark:border-white/5 hover:border-primary/20 transition-all">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-blue-600" />
-                  <h3 className="font-semibold text-lg">โพย</h3>
+                  <div className="p-2 rounded-lg bg-primary/20 text-primary">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-semibold text-lg text-foreground">โพย</h3>
                 </div>
-                <div className="space-y-2 pl-7">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ทั้งหมด:</span>
-                    <span className="font-semibold">{storedSlips.length} ใบ</span>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">ทั้งหมด</span>
+                    <span className="font-semibold text-foreground">{storedSlips.length} ใบ</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">รอผล:</span>
-                    <Badge variant="outline">
-                      {storedSlips.filter(s => s.status === "รอผล").length}
-                    </Badge>
+                  <Separator className="bg-border" />
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-muted/50 dark:bg-black/20 p-2 rounded flex justify-between">
+                      <span className="text-muted-foreground">รอผล</span>
+                      <span className="text-yellow-600 dark:text-yellow-400">{storedSlips.filter(s => s.status === "รอผล").length}</span>
+                    </div>
+                    <div className="bg-muted/50 dark:bg-black/20 p-2 rounded flex justify-between">
+                      <span className="text-muted-foreground">ถูกรางวัล</span>
+                      <span className="text-green-600 dark:text-green-400">{storedSlips.filter(s => s.status === "ถูกรางวัล").length}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ถูกรางวัล:</span>
-                    <Badge variant="default" className="bg-green-600">
-                      {storedSlips.filter(s => s.status === "ถูกรางวัล").length}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ไม่ถูกรางวัล:</span>
-                    <Badge variant="secondary">
-                      {storedSlips.filter(s => s.status === "ไม่ถูกรางวัล").length}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">จ่ายแล้ว:</span>
-                    <Badge variant="outline" className="bg-blue-50">
-                      {storedSlips.filter(s => s.status === "จ่ายแล้ว").length}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ค้างจ่าย:</span>
-                    <Badge variant="destructive">
-                      {storedSlips.filter(s => s.status === "ค้างจ่าย").length}
-                    </Badge>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between font-bold">
-                    <span>ยอดรวมทั้งหมด:</span>
-                    <span className="text-blue-600">
+
+                  <div className="pt-2 flex justify-between items-end">
+                    <span className="text-sm font-medium text-muted-foreground">ยอดรวมทั้งหมด</span>
+                    <span className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">
                       {formatCurrency(storedSlips.reduce((sum, s) => sum + s.totalAmount, 0))}
                     </span>
                   </div>
@@ -300,55 +300,56 @@ export default function DashboardPage() {
               </div>
 
               {/* สรุปเจ้ามือ */}
-              <div className="space-y-3">
+              <div className="space-y-4 p-4 rounded-xl bg-muted/30 dark:bg-white/5 border border-border dark:border-white/5 hover:border-secondary/20 transition-all">
                 <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-purple-600" />
-                  <h3 className="font-semibold text-lg">เจ้ามือ</h3>
-                </div>
-                <div className="space-y-2 pl-7">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">จำนวนเจ้ามือ:</span>
-                    <span className="font-semibold">{agents.length} คน</span>
+                  <div className="p-2 rounded-lg bg-secondary/20 text-secondary">
+                    <Users className="h-5 w-5" />
                   </div>
-                  {agents.length > 0 && (
-                    <>
-                      <Separator />
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-muted-foreground">รายชื่อ:</p>
-                        {agents.map((agent) => (
-                          <div key={agent.id} className="flex justify-between items-center text-sm">
-                            <span className="truncate">{agent.name}</span>
-                            <Badge variant="outline">
+                  <h3 className="font-semibold text-lg text-foreground">เจ้ามือ</h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-sm">จำนวนเจ้ามือ</span>
+                    <span className="font-semibold text-foreground">{agents.length} คน</span>
+                  </div>
+
+                  {agents.length > 0 ? (
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">รายชื่อล่าสุด</p>
+                      <div className="space-y-1 max-h-[100px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10">
+                        {agents.slice(0, 5).map((agent) => (
+                          <div key={agent.id} className="flex justify-between items-center text-xs bg-muted/50 dark:bg-black/20 p-2 rounded">
+                            <span className="truncate text-foreground">{agent.name}</span>
+                            <Badge variant="outline" className="border-secondary/30 text-secondary bg-secondary/5 text-[10px] h-5">
                               {agent.commissionPercent}%
                             </Badge>
                           </div>
                         ))}
                       </div>
-                    </>
-                  )}
-                  {agents.length === 0 && (
-                    <p className="text-sm text-muted-foreground pl-2">ยังไม่มีเจ้ามือ</p>
+                    </div>
+                  ) : (
+                    <div className="h-[100px] flex items-center justify-center text-xs text-muted-foreground italic">
+                      ยังไม่มีข้อมูลเจ้ามือ
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* สรุปการส่งให้เจ้ามือ */}
-              <div className="space-y-3">
+              <div className="space-y-4 p-4 rounded-xl bg-muted/30 dark:bg-white/5 border border-border dark:border-white/5 hover:border-accent/20 transition-all">
                 <div className="flex items-center gap-2">
-                  <Send className="h-5 w-5 text-green-600" />
-                  <h3 className="font-semibold text-lg">การส่งให้เจ้ามือ</h3>
+                  <div className="p-2 rounded-lg bg-accent/20 text-accent">
+                    <Send className="h-5 w-5" />
+                  </div>
+                  <h3 className="font-semibold text-lg text-foreground">การส่งยอด</h3>
                 </div>
-                <div className="space-y-2 pl-7">
-                  {/* โพยที่มีการเลือกเจ้ามือแล้ว */}
+                <div className="space-y-2">
                   {(() => {
                     const slipsWithAgent = storedSlips.filter((slip) => slip.agentId);
                     const totalSentAmount = slipsWithAgent.reduce((sum, slip) => sum + slip.totalAmount, 0);
                     const totalSentSlips = slipsWithAgent.length;
-                    
-                    // คำนวณส่วนที่เราได้และจ่ายให้เจ้ามือ
                     let totalCommission = 0;
                     let totalPayToAgent = 0;
-                    
                     slipsWithAgent.forEach((slip) => {
                       const agent = agents.find(a => a.id === slip.agentId);
                       if (agent) {
@@ -357,42 +358,29 @@ export default function DashboardPage() {
                         totalPayToAgent += slip.totalAmount - commission;
                       }
                     });
-                    
+
                     return (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">จำนวนครั้ง:</span>
-                          <span className="font-semibold">{sendHistory.length} ครั้ง</span>
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">ส่งแล้ว</span>
+                          <span className="text-foreground">{totalSentSlips} ใบ</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">จำนวนโพยที่ส่ง:</span>
-                          <span className="font-semibold">
-                            {totalSentSlips} ใบ
-                          </span>
+                        <Separator className="bg-border" />
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">ยอดส่งรวม</span>
+                            <span className="text-foreground">{formatCurrency(totalSentAmount)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">ส่วนแบ่ง</span>
+                            <span className="text-green-600 dark:text-green-400 font-medium">{formatCurrency(totalCommission)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-2">
+                            <span className="text-muted-foreground">จ่ายเจ้ามือ</span>
+                            <span className="text-accent font-bold">{formatCurrency(totalPayToAgent)}</span>
+                          </div>
                         </div>
-                        <Separator />
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">ยอดรวมที่ส่ง:</span>
-                          <span className="font-semibold text-green-600">
-                            {formatCurrency(totalSentAmount)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">ส่วนที่เราได้:</span>
-                          <span className="font-semibold text-blue-600">
-                            {formatCurrency(totalCommission)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">จ่ายให้เจ้ามือ:</span>
-                          <span className="font-semibold text-orange-600">
-                            {formatCurrency(totalPayToAgent)}
-                          </span>
-                        </div>
-                        {totalSentSlips === 0 && (
-                          <p className="text-sm text-muted-foreground pt-2">ยังไม่มีประวัติการส่ง</p>
-                        )}
-                      </>
+                      </div>
                     );
                   })()}
                 </div>
@@ -445,13 +433,13 @@ export default function DashboardPage() {
 
         {/* Agent Summary - ข้อมูลที่ได้จากเจ้ามือ */}
         {agents.length > 0 && (
-          <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+          <Card className="glass-card border-none">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-700">
+              <CardTitle className="flex items-center gap-2 text-foreground">
                 <Users className="h-5 w-5 text-red-600" />
                 สรุปตามเจ้ามือ
               </CardTitle>
-              <CardDescription>ข้อมูลและกำไรที่ได้จากเจ้ามือแต่ละคน</CardDescription>
+              <CardDescription className="text-muted-foreground">ข้อมูลและกำไรที่ได้จากเจ้ามือแต่ละคน</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -460,20 +448,20 @@ export default function DashboardPage() {
                   const slipsFromAgent = storedSlips.filter((slip) => slip.agentId === agent.id);
                   const totalSlipsReceived = slipsFromAgent.length;
                   const totalAmountReceived = slipsFromAgent.reduce((sum, slip) => sum + slip.totalAmount, 0);
-                  
+
                   // กำไรที่ได้จากเจ้ามือนี้ = ยอดรวมที่ได้รับ × เปอร์เซ็นต์ที่เราได้รับ
                   const profitFromAgent = (totalAmountReceived * agent.commissionPercent) / 100;
-                  
+
                   // ยอดที่ต้องจ่ายให้เจ้ามือ = ยอดรวม - กำไรที่เราได้
                   const amountToPayAgent = totalAmountReceived - profitFromAgent;
-                  
+
                   return (
-                    <Card key={agent.id} className="border-l-4 border-l-red-500 bg-white/95 shadow-sm hover:shadow-md transition-all">
+                    <Card key={agent.id} className="border-l-4 border-l-primary bg-muted/30 dark:bg-white/5 border-t-0 border-r-0 border-b-0 shadow-sm hover:shadow-md transition-all">
                       <CardContent className="pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div>
-                            <h3 className="font-semibold text-lg">{agent.name}</h3>
-                            <Badge variant="outline" className="mt-1">
+                            <h3 className="font-semibold text-lg text-foreground">{agent.name}</h3>
+                            <Badge variant="outline" className="mt-1 text-secondary border-secondary/50">
                               ได้รับ {agent.commissionPercent}%
                             </Badge>
                           </div>
@@ -504,7 +492,7 @@ export default function DashboardPage() {
                     </Card>
                   );
                 })}
-                
+
                 {/* Summary of all agents */}
                 {agents.length > 1 && (
                   <>

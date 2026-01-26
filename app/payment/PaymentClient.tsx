@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/table";
 import { CheckCircle, DollarSign, TrendingUp, AlertCircle } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
-import { getSlips, saveSlip } from "@/lib/storage";
+import { getSlips, saveSlip, getAgents, Agent } from "@/lib/storage";
 import { getDrawById, Draw } from "@/lib/draw";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useToast } from "@/hooks/use-toast";
 import { Slip } from "@/lib/mockData";
+import { calculateSlipPayout } from "@/lib/payout";
 
 export default function PaymentClient() {
   const searchParams = useSearchParams();
@@ -29,6 +30,7 @@ export default function PaymentClient() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [currentDraw, setCurrentDraw] = useState<Draw | null>(null);
   const [slips, setSlips] = useState<Slip[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
 
   const loadData = useCallback(() => {
     if (!drawId) {
@@ -58,6 +60,10 @@ export default function PaymentClient() {
     const allSlips = getSlips();
     const drawSlips = allSlips.filter(slip => slip.drawId === draw.id);
     setSlips(drawSlips);
+    
+    // Load agents
+    const allAgents = getAgents();
+    setAgents(allAgents);
   }, [drawId, router, toast]);
 
   // Check authentication
@@ -90,35 +96,13 @@ export default function PaymentClient() {
     }).format(date);
   };
 
-  // Calculate payout for a slip
+  // Calculate payout for a slip (considering banned numbers)
   const calculatePayout = (slip: Slip): number => {
-    if (!slip.items) return 0;
-    let payout = 0;
-    slip.items.forEach((item) => {
-      switch (item.type) {
-        case "2 ตัวบน":
-        case "2 ตัวล่าง":
-        case "2 ตัวกลับ":
-        case "2 กลับ (3 ตัว)":
-          payout += item.amount * 70;
-          break;
-        case "3 ตัวตรง":
-        case "3 ตัวบน":
-        case "3 กลับ":
-          payout += item.amount * 800;
-          break;
-        case "3 ตัวโต๊ด":
-        case "ชุด":
-          payout += item.amount * 130;
-          break;
-        case "วิ่ง":
-        case "วิ่งบน":
-        case "วิ่งล่าง":
-          payout += item.amount * 3;
-          break;
-      }
-    });
-    return payout;
+    if (!currentDraw?.result) return 0;
+    // Find agent for this slip
+      const agent = slip.agentId ? agents.find(a => a.id === slip.agentId) ?? null : null;
+      // Calculate payout considering banned numbers
+      return calculateSlipPayout(slip, currentDraw.result, agent, currentDraw);
   };
 
   const handleMarkPaid = (slipId: string) => {

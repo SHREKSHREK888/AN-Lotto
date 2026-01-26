@@ -39,6 +39,11 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { useToast } from "@/hooks/use-toast";
 import { logActivity } from "@/lib/activity-log";
 
+interface BannedNumberLimit {
+  numbers: string[];
+  payoutPercent?: number;
+}
+
 interface Agent {
   id: string;
   name: string;
@@ -49,11 +54,11 @@ interface Agent {
   createdAt: string;
   // เลขอั้นสำหรับเจ้ามือนี้
   bannedNumbers?: {
-    "2 ตัวบน"?: string[];
-    "2 ตัวล่าง"?: string[];
-    "3 ตัวตรง"?: string[];
-    "3 ตัวโต๊ด"?: string[];
-    "วิ่ง"?: string[];
+    "2 ตัวบน"?: BannedNumberLimit[];
+    "2 ตัวล่าง"?: BannedNumberLimit[];
+    "3 ตัวตรง"?: BannedNumberLimit[];
+    "3 ตัวโต๊ด"?: BannedNumberLimit[];
+    "วิ่ง"?: BannedNumberLimit[];
   };
 }
 
@@ -81,13 +86,14 @@ export default function AgentsPage() {
   const [payout2Digit, setPayout2Digit] = useState("");
   const [payout3Straight, setPayout3Straight] = useState("");
   const [payout3Tod, setPayout3Tod] = useState("");
-  
+
   // Banned numbers form states - now arrays of strings (each string is a comma-separated list)
-  const [banned2Top, setBanned2Top] = useState<string[]>([]);
-  const [banned2Bottom, setBanned2Bottom] = useState<string[]>([]);
-  const [banned3Straight, setBanned3Straight] = useState<string[]>([]);
-  const [banned3Tod, setBanned3Tod] = useState<string[]>([]);
-  const [bannedRunning, setBannedRunning] = useState<string[]>([]);
+  // Banned numbers form states - array of objects { numbers: string, percent: string }
+  const [banned2Top, setBanned2Top] = useState<{ numbers: string; percent: string }[]>([]);
+  const [banned2Bottom, setBanned2Bottom] = useState<{ numbers: string; percent: string }[]>([]);
+  const [banned3Straight, setBanned3Straight] = useState<{ numbers: string; percent: string }[]>([]);
+  const [banned3Tod, setBanned3Tod] = useState<{ numbers: string; percent: string }[]>([]);
+  const [bannedRunning, setBannedRunning] = useState<{ numbers: string; percent: string }[]>([]);
 
   // Check authentication
   useEffect(() => {
@@ -122,7 +128,7 @@ export default function AgentsPage() {
     if (stored) {
       try {
         const history = JSON.parse(stored);
-        setSendHistory(history.sort((a: any, b: any) => 
+        setSendHistory(history.sort((a: any, b: any) =>
           new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()
         ));
       } catch {
@@ -137,18 +143,26 @@ export default function AgentsPage() {
   };
 
   // Helper function to parse comma-separated numbers from an array of strings
-  const parseNumbersFromSets = (sets: string[]): string[] => {
-    const allNumbers: string[] = [];
+  // Helper function to parse banned numbers from state objects
+  const parseBannedNumbers = (sets: { numbers: string; percent: string }[]): BannedNumberLimit[] => {
+    const results: BannedNumberLimit[] = [];
     sets.forEach(set => {
-      if (set.trim()) {
-        const numbers = set
+      if (set.numbers.trim()) {
+        const numbers = set.numbers
           .split(",")
           .map(n => n.trim())
           .filter(n => n.length > 0);
-        allNumbers.push(...numbers);
+
+        if (numbers.length > 0) {
+          const percent = parseFloat(set.percent);
+          results.push({
+            numbers,
+            payoutPercent: !isNaN(percent) ? percent : undefined
+          });
+        }
       }
     });
-    return allNumbers;
+    return results;
   };
 
   const handleAddAgent = () => {
@@ -177,11 +191,11 @@ export default function AgentsPage() {
 
     // Parse banned numbers from all sets
     const bannedNumbers: Agent["bannedNumbers"] = {};
-    const banned2TopList = parseNumbersFromSets(banned2Top);
-    const banned2BottomList = parseNumbersFromSets(banned2Bottom);
-    const banned3StraightList = parseNumbersFromSets(banned3Straight);
-    const banned3TodList = parseNumbersFromSets(banned3Tod);
-    const bannedRunningList = parseNumbersFromSets(bannedRunning);
+    const banned2TopList = parseBannedNumbers(banned2Top);
+    const banned2BottomList = parseBannedNumbers(banned2Bottom);
+    const banned3StraightList = parseBannedNumbers(banned3Straight);
+    const banned3TodList = parseBannedNumbers(banned3Tod);
+    const bannedRunningList = parseBannedNumbers(bannedRunning);
 
     if (banned2TopList.length > 0) bannedNumbers["2 ตัวบน"] = banned2TopList;
     if (banned2BottomList.length > 0) bannedNumbers["2 ตัวล่าง"] = banned2BottomList;
@@ -250,11 +264,11 @@ export default function AgentsPage() {
 
     // Parse banned numbers from all sets
     const bannedNumbers: Agent["bannedNumbers"] = {};
-    const banned2TopList = parseNumbersFromSets(banned2Top);
-    const banned2BottomList = parseNumbersFromSets(banned2Bottom);
-    const banned3StraightList = parseNumbersFromSets(banned3Straight);
-    const banned3TodList = parseNumbersFromSets(banned3Tod);
-    const bannedRunningList = parseNumbersFromSets(bannedRunning);
+    const banned2TopList = parseBannedNumbers(banned2Top);
+    const banned2BottomList = parseBannedNumbers(banned2Bottom);
+    const banned3StraightList = parseBannedNumbers(banned3Straight);
+    const banned3TodList = parseBannedNumbers(banned3Tod);
+    const bannedRunningList = parseBannedNumbers(bannedRunning);
 
     if (banned2TopList.length > 0) bannedNumbers["2 ตัวบน"] = banned2TopList;
     if (banned2BottomList.length > 0) bannedNumbers["2 ตัวล่าง"] = banned2BottomList;
@@ -265,14 +279,14 @@ export default function AgentsPage() {
     const updatedAgents = agents.map((agent) =>
       agent.id === selectedAgent.id
         ? {
-            ...agent,
-            name: agentName.trim(),
-            commissionPercent: percent,
-            payout2Digit: payout2Value,
-            payout3Straight: payout3StraightValue,
-            payout3Tod: payout3TodValue,
-            bannedNumbers: Object.keys(bannedNumbers).length > 0 ? bannedNumbers : undefined,
-          }
+          ...agent,
+          name: agentName.trim(),
+          commissionPercent: percent,
+          payout2Digit: payout2Value,
+          payout3Straight: payout3StraightValue,
+          payout3Tod: payout3TodValue,
+          bannedNumbers: Object.keys(bannedNumbers).length > 0 ? bannedNumbers : undefined,
+        }
         : agent
     );
 
@@ -333,22 +347,21 @@ export default function AgentsPage() {
     setPayout2Digit(agent.payout2Digit?.toString() || "");
     setPayout3Straight(agent.payout3Straight?.toString() || "");
     setPayout3Tod(agent.payout3Tod?.toString() || "");
-    // Convert banned numbers arrays back to input format (split into sets)
-    // For now, we'll put all numbers in one set, but user can split them
-    const banned2TopArr = agent.bannedNumbers?.["2 ตัวบน"] || [];
-    const banned2BottomArr = agent.bannedNumbers?.["2 ตัวล่าง"] || [];
-    const banned3StraightArr = agent.bannedNumbers?.["3 ตัวตรง"] || [];
-    const banned3TodArr = agent.bannedNumbers?.["3 ตัวโต๊ด"] || [];
-    const bannedRunningArr = agent.bannedNumbers?.["วิ่ง"] || [];
-    
-    setBanned2Top(banned2TopArr.length > 0 ? [banned2TopArr.join(", ")] : []);
-    setBanned2Bottom(banned2BottomArr.length > 0 ? [banned2BottomArr.join(", ")] : []);
-    setBanned3Straight(banned3StraightArr.length > 0 ? [banned3StraightArr.join(", ")] : []);
-    setBanned3Tod(banned3TodArr.length > 0 ? [banned3TodArr.join(", ")] : []);
-    setBannedRunning(bannedRunningArr.length > 0 ? [bannedRunningArr.join(", ")] : []);
-    setPayout2Digit(agent.payout2Digit?.toString() || "");
-    setPayout3Straight(agent.payout3Straight?.toString() || "");
-    setPayout3Tod(agent.payout3Tod?.toString() || "");
+
+    // Helper to convert existing format to state format
+    const convertToState = (limits: BannedNumberLimit[] = []) => {
+      return limits.map(limit => ({
+        numbers: limit.numbers.join(", "),
+        percent: limit.payoutPercent ? limit.payoutPercent.toString() : ""
+      }));
+    };
+
+    setBanned2Top(convertToState(agent.bannedNumbers?.["2 ตัวบน"]));
+    setBanned2Bottom(convertToState(agent.bannedNumbers?.["2 ตัวล่าง"]));
+    setBanned3Straight(convertToState(agent.bannedNumbers?.["3 ตัวตรง"]));
+    setBanned3Tod(convertToState(agent.bannedNumbers?.["3 ตัวโต๊ด"]));
+    setBannedRunning(convertToState(agent.bannedNumbers?.["วิ่ง"]));
+
     setShowEditDialog(true);
   };
 
@@ -459,7 +472,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex">
+    <div className="min-h-screen bg-background flex">
       <Sidebar />
       <div className="flex-1 flex flex-col lg:ml-0 pt-16 lg:pt-0">
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
@@ -467,105 +480,113 @@ export default function AgentsPage() {
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">ย้ายโพยหวยให้เจ้ามือ</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-primary">ย้ายโพยหวยให้เจ้ามือ</h1>
                 <p className="text-muted-foreground">จัดการเจ้ามือและย้ายโพยหวย</p>
               </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleViewHistory}>
-              <History className="mr-2 h-4 w-4" />
-              ประวัติการส่ง
-            </Button>
-            <Button variant="outline" onClick={handleOpenMoveButton}>
-              <Send className="mr-2 h-4 w-4" />
-              ย้ายโพยหวย
-            </Button>
-            <Button
-              onClick={() => {
-                setAgentName("");
-                setCommissionPercent("");
-                setPayout2Digit("");
-                setPayout3Straight("");
-                setPayout3Tod("");
-                setShowAddDialog(true);
-              }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              เพิ่มเจ้ามือ
-            </Button>
-          </div>
-        </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleViewHistory}
+                  className="bg-muted/50 dark:bg-white/5 border-border dark:border-white/10 text-foreground hover:bg-muted dark:hover:bg-white/10 border-2"
+                >
+                  <History className="mr-2 h-4 w-4" />
+                  ประวัติการส่ง
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleOpenMoveButton}
+                  className="bg-muted/50 dark:bg-white/5 border-border dark:border-white/10 text-foreground hover:bg-muted dark:hover:bg-white/10 border-2"
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  ย้ายโพยหวย
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAgentName("");
+                    setCommissionPercent("");
+                    setPayout2Digit("");
+                    setPayout3Straight("");
+                    setPayout3Tod("");
+                    setShowAddDialog(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  เพิ่มเจ้ามือ
+                </Button>
+              </div>
+            </div>
 
-        {/* Agents List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>รายชื่อเจ้ามือ</CardTitle>
-            <CardDescription>จัดการข้อมูลเจ้ามือและเปอร์เซ็นต์</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {agents.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <p>ยังไม่มีเจ้ามือ</p>
-                <p className="text-sm mt-2">คลิกปุ่ม &ldquo;เพิ่มเจ้ามือ&rdquo; เพื่อเพิ่มรายการ</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ชื่อเจ้ามือ</TableHead>
-                      <TableHead className="text-right">เปอร์เซ็นต์</TableHead>
-                      <TableHead>วันที่เพิ่ม</TableHead>
-                      <TableHead className="text-right">การดำเนินการ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {agents.map((agent) => (
-                      <TableRow key={agent.id}>
-                        <TableCell className="font-medium">{agent.name}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="outline" className="text-base px-3 py-1">
-                            {agent.commissionPercent}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDate(agent.createdAt)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenMove(agent)}
-                              title="ย้ายโพยให้เจ้ามือนี้"
-                            >
-                              <ArrowRight className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenEdit(agent)}
-                              title="แก้ไข"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteAgent(agent.id)}
-                              title="ลบ"
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            {/* Agents List */}
+            <Card className="glass-card border-none">
+              <CardHeader>
+                <CardTitle className="text-foreground">รายชื่อเจ้ามือ</CardTitle>
+                <CardDescription className="text-muted-foreground">จัดการข้อมูลเจ้ามือและเปอร์เซ็นต์</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {agents.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <p>ยังไม่มีเจ้ามือ</p>
+                    <p className="text-sm mt-2">คลิกปุ่ม &ldquo;เพิ่มเจ้ามือ&rdquo; เพื่อเพิ่มรายการ</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ชื่อเจ้ามือ</TableHead>
+                          <TableHead className="text-right">เปอร์เซ็นต์</TableHead>
+                          <TableHead>วันที่เพิ่ม</TableHead>
+                          <TableHead className="text-right">การดำเนินการ</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {agents.map((agent) => (
+                          <TableRow key={agent.id}>
+                            <TableCell className="font-medium">{agent.name}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="outline" className="text-base px-3 py-1">
+                                {agent.commissionPercent}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(agent.createdAt)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenMove(agent)}
+                                  title="ย้ายโพยให้เจ้ามือนี้"
+                                >
+                                  <ArrowRight className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleOpenEdit(agent)}
+                                  title="แก้ไข"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteAgent(agent.id)}
+                                  title="ลบ"
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </main>
       </div>
@@ -658,7 +679,7 @@ export default function AgentsPage() {
                   กำหนดเลขที่ไม่อนุญาตให้รับ (คั่นด้วยเครื่องหมายจุลภาค เช่น 12,34,56)
                 </p>
               </div>
-              
+
               {/* 2 ตัวบน */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -667,7 +688,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Top([...banned2Top, ""])}
+                    onClick={() => setBanned2Top([...banned2Top, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -676,11 +697,23 @@ export default function AgentsPage() {
                 {banned2Top.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 12,34,56"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned2Top];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned2Top(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned2Top];
+                        newSets[index].percent = e.target.value;
                         setBanned2Top(newSets);
                       }}
                     />
@@ -699,7 +732,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Top([""])}
+                    onClick={() => setBanned2Top([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -716,7 +749,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Bottom([...banned2Bottom, ""])}
+                    onClick={() => setBanned2Bottom([...banned2Bottom, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -725,11 +758,23 @@ export default function AgentsPage() {
                 {banned2Bottom.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 12,34,56"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned2Bottom];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned2Bottom(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned2Bottom];
+                        newSets[index].percent = e.target.value;
                         setBanned2Bottom(newSets);
                       }}
                     />
@@ -748,7 +793,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Bottom([""])}
+                    onClick={() => setBanned2Bottom([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -765,7 +810,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Straight([...banned3Straight, ""])}
+                    onClick={() => setBanned3Straight([...banned3Straight, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -774,11 +819,23 @@ export default function AgentsPage() {
                 {banned3Straight.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 123,456,789"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned3Straight];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned3Straight(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned3Straight];
+                        newSets[index].percent = e.target.value;
                         setBanned3Straight(newSets);
                       }}
                     />
@@ -797,7 +854,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Straight([""])}
+                    onClick={() => setBanned3Straight([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -814,7 +871,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Tod([...banned3Tod, ""])}
+                    onClick={() => setBanned3Tod([...banned3Tod, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -823,11 +880,23 @@ export default function AgentsPage() {
                 {banned3Tod.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 123,456,789"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned3Tod];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned3Tod(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned3Tod];
+                        newSets[index].percent = e.target.value;
                         setBanned3Tod(newSets);
                       }}
                     />
@@ -846,7 +915,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Tod([""])}
+                    onClick={() => setBanned3Tod([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -863,7 +932,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBannedRunning([...bannedRunning, ""])}
+                    onClick={() => setBannedRunning([...bannedRunning, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -872,11 +941,23 @@ export default function AgentsPage() {
                 {bannedRunning.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 1,2,3,4,5"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...bannedRunning];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBannedRunning(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...bannedRunning];
+                        newSets[index].percent = e.target.value;
                         setBannedRunning(newSets);
                       }}
                     />
@@ -895,7 +976,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBannedRunning([""])}
+                    onClick={() => setBannedRunning([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1002,7 +1083,7 @@ export default function AgentsPage() {
                   กำหนดเลขที่ไม่อนุญาตให้รับ (คั่นด้วยเครื่องหมายจุลภาค เช่น 12,34,56)
                 </p>
               </div>
-              
+
               {/* 2 ตัวบน */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1011,7 +1092,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Top([...banned2Top, ""])}
+                    onClick={() => setBanned2Top([...banned2Top, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -1020,11 +1101,23 @@ export default function AgentsPage() {
                 {banned2Top.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 12,34,56"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned2Top];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned2Top(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned2Top];
+                        newSets[index].percent = e.target.value;
                         setBanned2Top(newSets);
                       }}
                     />
@@ -1043,7 +1136,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Top([""])}
+                    onClick={() => setBanned2Top([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1060,7 +1153,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Bottom([...banned2Bottom, ""])}
+                    onClick={() => setBanned2Bottom([...banned2Bottom, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -1069,11 +1162,23 @@ export default function AgentsPage() {
                 {banned2Bottom.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 12,34,56"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned2Bottom];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned2Bottom(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned2Bottom];
+                        newSets[index].percent = e.target.value;
                         setBanned2Bottom(newSets);
                       }}
                     />
@@ -1092,7 +1197,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned2Bottom([""])}
+                    onClick={() => setBanned2Bottom([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1109,7 +1214,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Straight([...banned3Straight, ""])}
+                    onClick={() => setBanned3Straight([...banned3Straight, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -1118,11 +1223,23 @@ export default function AgentsPage() {
                 {banned3Straight.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 123,456,789"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned3Straight];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned3Straight(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned3Straight];
+                        newSets[index].percent = e.target.value;
                         setBanned3Straight(newSets);
                       }}
                     />
@@ -1141,7 +1258,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Straight([""])}
+                    onClick={() => setBanned3Straight([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1158,7 +1275,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Tod([...banned3Tod, ""])}
+                    onClick={() => setBanned3Tod([...banned3Tod, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -1167,11 +1284,23 @@ export default function AgentsPage() {
                 {banned3Tod.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 123,456,789"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...banned3Tod];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBanned3Tod(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...banned3Tod];
+                        newSets[index].percent = e.target.value;
                         setBanned3Tod(newSets);
                       }}
                     />
@@ -1190,7 +1319,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBanned3Tod([""])}
+                    onClick={() => setBanned3Tod([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1207,7 +1336,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBannedRunning([...bannedRunning, ""])}
+                    onClick={() => setBannedRunning([...bannedRunning, { numbers: "", percent: "" }])}
                   >
                     <Plus className="h-4 w-4 mr-1" />
                     เพิ่มชุด
@@ -1216,11 +1345,23 @@ export default function AgentsPage() {
                 {bannedRunning.map((set, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
+                      className="flex-1"
                       placeholder="เช่น 1,2,3,4,5"
-                      value={set}
+                      value={set.numbers}
                       onChange={(e) => {
                         const newSets = [...bannedRunning];
-                        newSets[index] = e.target.value;
+                        newSets[index].numbers = e.target.value;
+                        setBannedRunning(newSets);
+                      }}
+                    />
+                    <Input
+                      className="w-24"
+                      type="number"
+                      placeholder="%"
+                      value={set.percent}
+                      onChange={(e) => {
+                        const newSets = [...bannedRunning];
+                        newSets[index].percent = e.target.value;
                         setBannedRunning(newSets);
                       }}
                     />
@@ -1239,7 +1380,7 @@ export default function AgentsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setBannedRunning([""])}
+                    onClick={() => setBannedRunning([{ numbers: "", percent: "" }])}
                     className="w-full"
                   >
                     <Plus className="h-4 w-4 mr-1" />
@@ -1257,15 +1398,13 @@ export default function AgentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Move Slips Dialog */}
       <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ย้ายโพยหวยให้เจ้ามือ</DialogTitle>
             <DialogDescription>
-              {agentToMove 
-                ? `ย้ายโพยให้ ${agentToMove.name}` 
+              {agentToMove
+                ? `ย้ายโพยให้ ${agentToMove.name}`
                 : "เลือกโพยและเจ้ามือที่ต้องการย้ายไปให้"}
             </DialogDescription>
           </DialogHeader>
@@ -1273,8 +1412,8 @@ export default function AgentsPage() {
             {/* Select Agent */}
             <div className="space-y-2">
               <Label>เลือกเจ้ามือที่ต้องการย้ายไปให้</Label>
-              <Select 
-                value={selectedAgent?.id || ""} 
+              <Select
+                value={selectedAgent?.id || ""}
                 onValueChange={(value) => {
                   const agent = agents.find(a => a.id === value);
                   setSelectedAgent(agent || null);
@@ -1328,11 +1467,10 @@ export default function AgentsPage() {
                     return (
                       <div
                         key={slip.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                          selectedSlips.includes(slip.id)
-                            ? "bg-primary/10 border-primary"
-                            : "hover:bg-muted"
-                        }`}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedSlips.includes(slip.id)
+                          ? "bg-primary/10 border-primary"
+                          : "hover:bg-muted"
+                          }`}
                         onClick={() => {
                           if (selectedSlips.includes(slip.id)) {
                             setSelectedSlips(
@@ -1348,7 +1486,7 @@ export default function AgentsPage() {
                             <input
                               type="checkbox"
                               checked={selectedSlips.includes(slip.id)}
-                              onChange={() => {}}
+                              onChange={() => { }}
                               className="w-4 h-4"
                             />
                             <span className="font-medium">{slip.slipNumber}</span>
@@ -1446,15 +1584,15 @@ export default function AgentsPage() {
                 {sendHistory.map((record) => {
                   const agent = agents.find((a) => a.id === record.agentId);
                   return (
-                    <Card key={record.id}>
+                    <Card key={record.id} className="glass-card border-none">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <span className="font-semibold">
+                              <span className="font-semibold text-foreground">
                                 {record.agentName || agent?.name || "ไม่พบข้อมูล"}
                               </span>
-                              <Badge variant="outline">
+                              <Badge variant="outline" className="text-foreground border-border">
                                 {record.slipIds.length} โพย
                               </Badge>
                             </div>
@@ -1464,13 +1602,13 @@ export default function AgentsPage() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                               <div>
                                 <p className="text-muted-foreground">ยอดรวม</p>
-                                <p className="font-semibold">
+                                <p className="font-semibold text-foreground">
                                   {formatCurrency(record.totalAmount)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-muted-foreground">เปอร์เซ็นต์ที่เราได้</p>
-                                <p className="font-semibold">
+                                <p className="font-semibold text-foreground">
                                   {record.commissionPercent}%
                                 </p>
                               </div>
@@ -1482,7 +1620,7 @@ export default function AgentsPage() {
                               </div>
                               <div>
                                 <p className="text-muted-foreground">ยอดที่จ่ายให้เจ้ามือ</p>
-                                <p className="font-semibold text-green-600">
+                                <p className="font-semibold text-green-400">
                                   {formatCurrency(record.netAmount)}
                                 </p>
                               </div>

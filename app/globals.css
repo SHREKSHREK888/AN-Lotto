@@ -4,31 +4,81 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 262 83% 58%;
+    /* Light Theme */
+    --background: 0 0% 100%; /* #ffffff */
+    --foreground: 0 0% 0%; /* #000000 - สีดำสำหรับตัวหนังสือทั้งหมด */
+
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 0%; /* #000000 - สีดำ */
+
+    --popover: 0 0% 98%;
+    --popover-foreground: 0 0% 0%; /* #000000 - สีดำ */
+
+    --primary: 265 89% 66%; /* #9d4edd Purple */
     --primary-foreground: 0 0% 100%;
-    --secondary: 280 75% 65%;
+
+    --secondary: 310 90% 65%; /* #e74694 Pink */
     --secondary-foreground: 0 0% 100%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 340 82% 52%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
-    --radius: 0.75rem;
-    --chart-1: 262 83% 58%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 340 82% 52%;
-    --chart-4: 280 75% 65%;
-    --chart-5: 27 87% 67%;
+
+    --muted: 240 5% 96%;
+    --muted-foreground: 0 0% 20%; /* สีเทาเข้ม (เกือบดำ) สำหรับข้อความรอง */
+
+    --accent: 180 100% 50%; /* #00ffff Cyan */
+    --accent-foreground: 0 0% 0%; /* #000000 - สีดำ */
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 265 89% 66%;
+
+    --radius: 1rem;
+
+    /* Chart/Graph Colors */
+    --chart-1: 265 89% 66%;
+    --chart-2: 310 90% 65%;
+    --chart-3: 180 100% 50%;
+    --chart-4: 280 75% 60%;
+    --chart-5: 340 80% 55%;
+  }
+
+  .dark {
+    /* Premium Dark Theme */
+    --background: 240 10% 4%; /* #0a0a0f */
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 6%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 265 89% 66%; /* #9d4edd Purple */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 310 90% 65%; /* #e74694 Pink */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 6% 15%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 180 100% 50%; /* #00ffff Cyan */
+    --accent-foreground: 240 10% 4%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 6% 20%;
+    --input: 240 6% 20%;
+    --ring: 265 89% 66%;
+
+    /* Chart/Graph Colors */
+    --chart-1: 265 89% 66%;
+    --chart-2: 310 90% 65%;
+    --chart-3: 180 100% 50%;
+    --chart-4: 280 75% 60%;
+    --chart-5: 340 80% 55%;
   }
 }
 
@@ -37,23 +87,36 @@
     @apply border-border;
   }
   body {
-    @apply bg-gradient-to-br from-slate-100 via-blue-50/50 to-indigo-50/50 text-foreground min-h-screen;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image: 
+      radial-gradient(circle at 15% 50%, var(--glow-1, rgba(157, 78, 221, 0.1)) 0%, transparent 25%),
+      radial-gradient(circle at 85% 30%, var(--glow-2, rgba(231, 70, 148, 0.1)) 0%, transparent 25%);
+    background-attachment: fixed;
   }
-  
-  /* Theme CSS Variables */
-  :root {
-    --theme-primary: #dc2626;
-    --theme-primary-hover: #b91c1c;
-    --theme-primary-dark: #991b1b;
-    --theme-sidebar-from: #b91c1c;
-    --theme-sidebar-to: #991b1b;
-  }
-  
-  [data-theme] {
-    --theme-primary: var(--theme-primary);
-    --theme-primary-hover: var(--theme-primary-hover);
-    --theme-primary-dark: var(--theme-primary-dark);
-    --theme-sidebar-from: var(--theme-sidebar-from);
-    --theme-sidebar-to: var(--theme-sidebar-to);
+
+  .dark body {
+    background-image: 
+      radial-gradient(circle at 15% 50%, var(--glow-1, rgba(157, 78, 221, 0.1)) 0%, transparent 25%),
+      radial-gradient(circle at 85% 30%, var(--glow-2, rgba(231, 70, 148, 0.1)) 0%, transparent 25%);
   }
 }
+
+@layer utilities {
+  .glass {
+    @apply bg-white/5 dark:bg-white/5 backdrop-blur-xl border border-white/10 dark:border-white/10 shadow-2xl;
+  }
+  
+  .glass-card {
+    @apply bg-white/80 dark:bg-black/40 backdrop-blur-xl border border-gray-200 dark:border-white/10 shadow-xl;
+  }
+  
+  .glass-input {
+    @apply bg-white/50 dark:bg-black/20 border-gray-200 dark:border-white/10 focus:border-primary/50 focus:bg-white/80 dark:focus:bg-black/40 transition-all duration-300;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-secondary to-accent;
+  }
+}
+

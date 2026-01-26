@@ -262,7 +262,7 @@ export default function MembersPage() {
         createdAt: new Date().toISOString(),
       };
       saveMember(newMember);
-      
+
       // Show credentials dialog
       setNewCredentials({
         username: newMember.username,
@@ -270,7 +270,7 @@ export default function MembersPage() {
       });
       setShowAddDialog(false);
       setShowCredentialsDialog(true);
-      
+
       logActivity(
         "ADD_MEMBER",
         `เพิ่มสมาชิกใหม่: ${newMember.name} (${newMember.username})`,
@@ -431,8 +431,8 @@ export default function MembersPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-red-700">จัดการสมาชิก</h1>
-            <p className="text-slate-600 mt-1">เพิ่ม แก้ไข และลบสมาชิกในระบบ</p>
+            <h1 className="text-3xl font-bold tracking-tight text-primary">จัดการสมาชิก</h1>
+            <p className="text-muted-foreground mt-1">เพิ่ม แก้ไข และลบสมาชิกในระบบ</p>
           </div>
           <Button onClick={handleAdd}>
             <Plus className="mr-2 h-4 w-4" />
@@ -441,7 +441,7 @@ export default function MembersPage() {
         </div>
 
         {/* Search */}
-        <Card className="border border-slate-200 shadow-md bg-white/95">
+        <Card className="glass-card border-none">
           <CardContent className="pt-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -456,16 +456,16 @@ export default function MembersPage() {
         </Card>
 
         {/* Members Table */}
-        <Card className="border border-slate-200 shadow-md bg-white/95">
+        <Card className="glass-card border-none">
           <CardHeader>
-            <CardTitle className="text-red-700">รายการสมาชิก</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-foreground">รายการสมาชิก</CardTitle>
+            <CardDescription className="text-muted-foreground">
               ทั้งหมด {members.length} คน ({filteredMembers.length} คนที่แสดง)
             </CardDescription>
           </CardHeader>
           <CardContent>
             {filteredMembers.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
+              <div className="text-center py-12 text-muted-foreground">
                 <User className="mx-auto h-12 w-12 mb-4 opacity-50" />
                 <p>ไม่พบสมาชิก</p>
                 <p className="text-sm mt-1">
@@ -616,7 +616,7 @@ export default function MembersPage() {
                 <option value="inactive">ไม่ใช้งาน</option>
               </select>
             </div>
-            
+
             {/* Permissions Section - Only for user role */}
             {formData.role === "user" && (
               <div className="space-y-3 pt-4 border-t">

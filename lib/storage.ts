@@ -4,6 +4,11 @@ const STORAGE_KEY = "lotto_slips";
 const AGENTS_KEY = "agents";
 const MEMBERS_KEY = "lotto_members";
 
+export interface BannedNumberLimit {
+  numbers: string[];
+  payoutPercent?: number; // เปอร์เซ็นต์จ่าย (เช่น 50 = จ่ายครึ่งเดียว)
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -14,11 +19,11 @@ export interface Agent {
   createdAt: string;
   // เลขอั้นสำหรับเจ้ามือนี้
   bannedNumbers?: {
-    "2 ตัวบน"?: string[];
-    "2 ตัวล่าง"?: string[];
-    "3 ตัวตรง"?: string[];
-    "3 ตัวโต๊ด"?: string[];
-    "วิ่ง"?: string[];
+    "2 ตัวบน"?: BannedNumberLimit[];
+    "2 ตัวล่าง"?: BannedNumberLimit[];
+    "3 ตัวตรง"?: BannedNumberLimit[];
+    "3 ตัวโต๊ด"?: BannedNumberLimit[];
+    "วิ่ง"?: BannedNumberLimit[];
   };
 }
 

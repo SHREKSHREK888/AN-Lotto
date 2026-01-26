@@ -26,12 +26,13 @@ import {
 } from "@/components/ui/dialog";
 import { Trophy, Edit, Save, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 import { isAuthenticated } from "@/lib/auth";
-import { getSlips, updateSlipStatus, saveSlip } from "@/lib/storage";
+import { getSlips, updateSlipStatus, saveSlip, getAgents, Agent } from "@/lib/storage";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useToast } from "@/hooks/use-toast";
 import { Slip } from "@/lib/mockData";
 import { getDrawById, getCurrentDraw, saveDraw, Draw } from "@/lib/draw";
 import { useSearchParams } from "next/navigation";
+import { calculateSlipPayout } from "@/lib/payout";
 
 interface LotteryResult {
   result2Top: string; // 2 ตัวบน
@@ -49,10 +50,11 @@ export default function LotteryResultClient() {
   const drawId = searchParams.get("drawId");
   const [currentDraw, setCurrentDraw] = useState<Draw | null>(null);
   const [slips, setSlips] = useState<Slip[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [result, setResult] = useState<LotteryResult | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [isAuthChecked, setIsAuthChecked] = useState(false);
-  
+
   // Form states for editing
   const [editResult2Top, setEditResult2Top] = useState("");
   const [editResult2Bottom, setEditResult2Bottom] = useState("");
@@ -67,7 +69,7 @@ export default function LotteryResultClient() {
     } else {
       draw = getCurrentDraw();
     }
-    
+
     if (!draw) {
       toast({
         variant: "destructive",
@@ -79,21 +81,25 @@ export default function LotteryResultClient() {
       }, 2000);
       return;
     }
-    
+
     setCurrentDraw(draw);
-    
+
     // Load slips for this draw
     const allSlips = getSlips();
     const drawSlips = allSlips.filter(slip => slip.drawId === draw.id);
     setSlips(drawSlips);
-    
+
+    // Load agents
+    const allAgents = getAgents();
+    setAgents(allAgents || []);
+
     // Load lottery result from draw
     if (draw.result) {
       const closedDate = new Date(draw.result.closedAt);
       const now = new Date();
       const diffTime = now.getTime() - closedDate.getTime();
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
-      
+
       setResult({
         ...draw.result,
         canEdit: diffDays < 1, // Can edit if less than 1 day
@@ -139,22 +145,20 @@ export default function LotteryResultClient() {
     for (const item of slip.items) {
       const number = item.number;
       let isWin = false;
-      
+
       switch (item.type) {
         case "2 ตัวบน":
-          // Match last 2 digits of 3 ตัวตรง
-          if (result.result3Straight.length >= 2) {
-            const last2 = result.result3Straight.slice(-2);
-            if (number.padStart(2, "0") === last2) {
+          // Match with result2Top
+          if (result.result2Top) {
+            if (number.padStart(2, "0") === result.result2Top.padStart(2, "0")) {
               isWin = true;
             }
           }
           break;
         case "2 ตัวล่าง":
-          // Match last 2 digits of result (usually from 3 ตัวตรง)
-          if (result.result3Straight.length >= 2) {
-            const last2 = result.result3Straight.slice(-2);
-            if (number.padStart(2, "0") === last2) {
+          // Match with result2Bottom
+          if (result.result2Bottom) {
+            if (number.padStart(2, "0") === result.result2Bottom.padStart(2, "0")) {
               isWin = true;
             }
           }
@@ -169,7 +173,7 @@ export default function LotteryResultClient() {
           if (number.length === 3) {
             const digits = number.split("").map(d => d.trim()).filter(d => d);
             const resultDigits = result.result3Tod.map(d => d.trim()).filter(d => d);
-            
+
             // Check if all digits in number exist in result3Tod
             if (digits.length === 3 && resultDigits.length === 3) {
               const allDigitsMatch = digits.every(d => resultDigits.includes(d));
@@ -189,7 +193,7 @@ export default function LotteryResultClient() {
           if (number.length === 3) {
             const digits = number.split("").map(d => d.trim()).filter(d => d);
             const resultDigits = result.result3Tod.map(d => d.trim()).filter(d => d);
-            
+
             if (digits.length === 3 && resultDigits.length === 3) {
               const allDigitsMatch = digits.every(d => resultDigits.includes(d));
               const countsMatch = digits.every(d => {
@@ -219,11 +223,11 @@ export default function LotteryResultClient() {
           }
           break;
       }
-      
+
       // If any item wins, the slip wins
       if (isWin) return true;
     }
-    
+
     return false;
   };
 
@@ -239,7 +243,7 @@ export default function LotteryResultClient() {
 
     // Parse 3 ตัวโต๊ด (3 digits like "199")
     const todDigits = editResult3Tod.replace(/\D/g, ""); // Remove non-digits
-    
+
     if (todDigits.length !== 3) {
       toast({
         variant: "destructive",
@@ -248,7 +252,7 @@ export default function LotteryResultClient() {
       });
       return;
     }
-    
+
     const todArray = todDigits.split("");
 
     if (!currentDraw) {
@@ -311,7 +315,7 @@ export default function LotteryResultClient() {
 
   const handleEditResult = () => {
     if (!result) return;
-    
+
     if (!result.canEdit) {
       toast({
         variant: "destructive",
@@ -347,7 +351,7 @@ export default function LotteryResultClient() {
 
     // Parse 3 ตัวโต๊ด (3 digits like "199")
     const todDigits = editResult3Tod.replace(/\D/g, ""); // Remove non-digits
-    
+
     if (todDigits.length !== 3) {
       toast({
         variant: "destructive",
@@ -356,7 +360,7 @@ export default function LotteryResultClient() {
       });
       return;
     }
-    
+
     const todArray = todDigits.split("");
 
     if (!currentDraw) {
@@ -388,8 +392,8 @@ export default function LotteryResultClient() {
     // Re-check all slips for this draw with new result
     const allSlips = getSlips();
     const updatedSlips = allSlips.map((slip) => {
-      if (slip.drawId === currentDraw.id && 
-          (slip.status === "รอผล" || slip.status === "ถูกรางวัล" || slip.status === "ไม่ถูกรางวัล")) {
+      if (slip.drawId === currentDraw.id &&
+        (slip.status === "รอผล" || slip.status === "ถูกรางวัล" || slip.status === "ไม่ถูกรางวัล")) {
         const isWin = checkWin(slip);
         return {
           ...slip,
@@ -420,33 +424,14 @@ export default function LotteryResultClient() {
     const totalSales = slips.reduce((sum, slip) => sum + slip.totalAmount, 0);
     const winningSlips = slips.filter(slip => slip.status === "ถูกรางวัล");
     const totalPayout = winningSlips.reduce((sum, slip) => {
-      // Calculate payout based on type (simplified - you may need to adjust)
-      let payout = 0;
-      if (slip.items) {
-        slip.items.forEach(item => {
-          switch (item.type) {
-            case "2 ตัวบน":
-            case "2 ตัวล่าง":
-              payout += item.amount * 70; // 70x payout
-              break;
-            case "3 ตัวตรง":
-              payout += item.amount * 800; // 800x payout
-              break;
-            case "3 ตัวโต๊ด":
-            case "ชุด":
-              payout += item.amount * 130; // 130x payout
-              break;
-            case "วิ่ง":
-              payout += item.amount * 3; // 3x payout
-              break;
-          }
-        });
-      }
-      return sum + payout;
+      // Find agent for this slip
+        const agent = slip.agentId ? agents.find(a => a.id === slip.agentId) ?? null : null;
+        // Calculate payout considering banned numbers
+        return sum + (result ? calculateSlipPayout(slip, result, agent, currentDraw) : 0);
     }, 0);
-    
+
     const profit = totalSales - totalPayout;
-    
+
     return {
       totalSales,
       totalPayout,
@@ -469,7 +454,7 @@ export default function LotteryResultClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex">
+    <div className="min-h-screen bg-background flex">
       <Sidebar />
       <div className="flex-1 flex flex-col lg:ml-0 pt-16 lg:pt-0">
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
@@ -501,9 +486,9 @@ export default function LotteryResultClient() {
 
             {/* Current Result */}
             {result && (
-              <Card>
+              <Card className="glass-card border-none">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-foreground">
                     <Trophy className="h-5 w-5 text-yellow-600" />
                     เลขผลหวย
                   </CardTitle>
@@ -518,27 +503,27 @@ export default function LotteryResultClient() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                      <Label className="text-sm text-muted-foreground">2 ตัวบน</Label>
-                      <p className="text-3xl font-bold text-blue-600 mt-2">
+                    <div className="p-4 bg-blue-500/10 rounded-lg border-2 border-blue-500/30">
+                      <Label className="text-sm text-blue-200">2 ตัวบน</Label>
+                      <p className="text-3xl font-bold text-blue-400 mt-2">
                         {result.result2Top}
                       </p>
                     </div>
-                    <div className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
-                      <Label className="text-sm text-muted-foreground">2 ตัวล่าง</Label>
-                      <p className="text-3xl font-bold text-green-600 mt-2">
+                    <div className="p-4 bg-green-500/10 rounded-lg border-2 border-green-500/30">
+                      <Label className="text-sm text-green-200">2 ตัวล่าง</Label>
+                      <p className="text-3xl font-bold text-green-400 mt-2">
                         {result.result2Bottom}
                       </p>
                     </div>
-                    <div className="p-4 bg-purple-50 rounded-lg border-2 border-purple-200">
-                      <Label className="text-sm text-muted-foreground">3 ตัวตรง</Label>
-                      <p className="text-3xl font-bold text-purple-600 mt-2">
+                    <div className="p-4 bg-purple-500/10 rounded-lg border-2 border-purple-500/30">
+                      <Label className="text-sm text-purple-200">3 ตัวตรง</Label>
+                      <p className="text-3xl font-bold text-purple-400 mt-2">
                         {result.result3Straight}
                       </p>
                     </div>
-                    <div className="p-4 bg-orange-50 rounded-lg border-2 border-orange-200">
-                      <Label className="text-sm text-muted-foreground">3 ตัวโต๊ด</Label>
-                      <p className="text-3xl font-bold text-orange-600 mt-2">
+                    <div className="p-4 bg-orange-500/10 rounded-lg border-2 border-orange-500/30">
+                      <Label className="text-sm text-orange-200">3 ตัวโต๊ด</Label>
+                      <p className="text-3xl font-bold text-orange-400 mt-2">
                         {result.result3Tod.join("")}
                       </p>
                     </div>
@@ -549,13 +534,13 @@ export default function LotteryResultClient() {
 
             {/* Summary */}
             {result && (
-              <Card>
+              <Card className="glass-card border-none">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-foreground">
                     {summary.profit >= 0 ? (
-                      <TrendingUp className="h-5 w-5 text-green-600" />
+                      <TrendingUp className="h-5 w-5 text-green-400" />
                     ) : (
-                      <TrendingDown className="h-5 w-5 text-red-600" />
+                      <TrendingDown className="h-5 w-5 text-red-400" />
                     )}
                     สรุปกำไร/ขาดทุน
                   </CardTitle>
@@ -564,21 +549,21 @@ export default function LotteryResultClient() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>
                       <Label className="text-sm text-muted-foreground">จำนวนโพยทั้งหมด</Label>
-                      <p className="text-2xl font-bold mt-2">{summary.totalSlips} ใบ</p>
+                      <p className="text-2xl font-bold mt-2 text-foreground">{summary.totalSlips} ใบ</p>
                     </div>
                     <div>
                       <Label className="text-sm text-muted-foreground">โพยที่ถูกรางวัล</Label>
-                      <p className="text-2xl font-bold text-green-600 mt-2">
+                      <p className="text-2xl font-bold text-green-400 mt-2">
                         {summary.winningCount} ใบ
                       </p>
                     </div>
                     <div>
                       <Label className="text-sm text-muted-foreground">ยอดรับรวม</Label>
-                      <p className="text-2xl font-bold mt-2">{formatCurrency(summary.totalSales)}</p>
+                      <p className="text-2xl font-bold mt-2 text-foreground">{formatCurrency(summary.totalSales)}</p>
                     </div>
                     <div>
                       <Label className="text-sm text-muted-foreground">ยอดจ่ายรวม</Label>
-                      <p className="text-2xl font-bold text-red-600 mt-2">
+                      <p className="text-2xl font-bold text-red-400 mt-2">
                         {formatCurrency(summary.totalPayout)}
                       </p>
                     </div>
@@ -587,9 +572,8 @@ export default function LotteryResultClient() {
                         {summary.profit >= 0 ? "กำไร" : "ขาดทุน"}
                       </Label>
                       <p
-                        className={`text-3xl font-bold mt-2 ${
-                          summary.profit >= 0 ? "text-green-600" : "text-red-600"
-                        }`}
+                        className={`text-3xl font-bold mt-2 ${summary.profit >= 0 ? "text-green-400" : "text-red-400"
+                          }`}
                       >
                         {formatCurrency(Math.abs(summary.profit))}
                       </p>
@@ -601,9 +585,9 @@ export default function LotteryResultClient() {
 
             {/* Winning Slips */}
             {result && (
-              <Card>
+              <Card className="glass-card border-none">
                 <CardHeader>
-                  <CardTitle>โพยที่ถูกรางวัล</CardTitle>
+                  <CardTitle className="text-foreground">โพยที่ถูกรางวัล</CardTitle>
                   <CardDescription>
                     รายการโพยที่ถูกรางวัลทั้งหมด ({summary.winningCount} ใบ)
                   </CardDescription>
@@ -629,33 +613,10 @@ export default function LotteryResultClient() {
                           {slips
                             .filter((slip) => slip.status === "ถูกรางวัล")
                             .map((slip) => {
-                              let payout = 0;
-                              if (slip.items) {
-                                slip.items.forEach((item) => {
-                                  switch (item.type) {
-                                    case "2 ตัวบน":
-                                    case "2 ตัวล่าง":
-                                    case "2 ตัวกลับ":
-                                    case "2 กลับ (3 ตัว)":
-                                      payout += item.amount * 70;
-                                      break;
-                                    case "3 ตัวตรง":
-                                    case "3 ตัวบน":
-                                    case "3 กลับ":
-                                      payout += item.amount * 800;
-                                      break;
-                                    case "3 ตัวโต๊ด":
-                                    case "ชุด":
-                                      payout += item.amount * 130;
-                                      break;
-                                    case "วิ่ง":
-                                    case "วิ่งบน":
-                                    case "วิ่งล่าง":
-                                      payout += item.amount * 3;
-                                      break;
-                                  }
-                                });
-                              }
+                              // Find agent for this slip
+                              const agent = slip.agentId ? agents.find(a => a.id === slip.agentId) ?? null : null;
+                              // Calculate payout considering banned numbers
+                              const payout = result ? calculateSlipPayout(slip, result, agent, currentDraw) : 0;
                               return (
                                 <TableRow key={slip.id}>
                                   <TableCell className="font-medium">
@@ -663,11 +624,11 @@ export default function LotteryResultClient() {
                                   </TableCell>
                                   <TableCell>{slip.customerName}</TableCell>
                                   <TableCell>{formatCurrency(slip.totalAmount)}</TableCell>
-                                  <TableCell className="text-green-600 font-semibold">
+                                  <TableCell className="text-green-400 font-semibold">
                                     {formatCurrency(payout)}
                                   </TableCell>
                                   <TableCell>
-                                    <Badge variant="default" className="bg-green-600">
+                                    <Badge variant="default" className="bg-green-600 text-white">
                                       {slip.status}
                                     </Badge>
                                   </TableCell>
@@ -684,13 +645,13 @@ export default function LotteryResultClient() {
 
             {/* No Result Message */}
             {!result && (
-              <Card>
+              <Card className="glass-card border-none">
                 <CardContent className="py-12">
                   <div className="text-center space-y-4">
-                    <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <AlertCircle className="mx-auto h-12 w-12 text-gray-500" />
                     <div>
-                      <h3 className="text-lg font-semibold">ยังไม่ได้ปิดผลหวย</h3>
-                      <p className="text-muted-foreground mt-2">
+                      <h3 className="text-lg font-semibold text-white">ยังไม่ได้ปิดผลหวย</h3>
+                      <p className="text-gray-400 mt-2">
                         คลิกปุ่ม &ldquo;ปิดผลหวย&rdquo; เพื่อปิดผลและอัปเดตสถานะโพย
                       </p>
                     </div>
@@ -763,7 +724,7 @@ export default function LotteryResultClient() {
                 onChange={(e) => setEditResult3Tod(e.target.value.replace(/\D/g, ""))}
               />
               <p className="text-xs text-muted-foreground">
-                {editResult3Straight.length === 3 
+                {editResult3Straight.length === 3
                   ? `เลข 3 ตัวโต๊ดดึงมาจากเลข 3 ตัวตรงอัตโนมัติ: ${editResult3Straight} (สามารถแก้ไขได้)`
                   : "กรอกเลข 3 ตัวตรงก่อน หรือกรอกเลข 3 ตัวต่อกัน เช่น 199"}
               </p>

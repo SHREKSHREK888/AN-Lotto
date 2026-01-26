@@ -147,7 +147,7 @@ export default function SetupPinPage() {
 
     // Save PIN to localStorage
     localStorage.setItem("admin_pin", originalPin);
-    
+
     // Mark PIN as set
     localStorage.setItem("pin_setup_complete", "true");
 
@@ -164,8 +164,8 @@ export default function SetupPinPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md shadow-lg">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="glass-card border-none w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">

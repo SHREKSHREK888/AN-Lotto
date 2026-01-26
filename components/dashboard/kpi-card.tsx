@@ -18,28 +18,27 @@ interface KPICardProps {
 export function KPICard({ title, value, helperText, trend, icon, formatAsCurrency = true }: KPICardProps) {
   const formattedValue = formatAsCurrency
     ? new Intl.NumberFormat("th-TH", {
-        style: "currency",
-        currency: "THB",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(value)
+      style: "currency",
+      currency: "THB",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value)
     : new Intl.NumberFormat("th-TH").format(value);
 
   return (
-    <Card className="bg-white/95 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300">
+    <Card className="glass-card transition-all duration-300 hover:-translate-y-1 hover:shadow-primary/20 hover:border-primary/30 group">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-slate-700">{title}</CardTitle>
-        {icon && <div className="text-red-600">{icon}</div>}
+        <CardTitle className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">{title}</CardTitle>
+        {icon && <div className="text-primary group-hover:text-accent transition-colors">{icon}</div>}
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold text-red-700">{formattedValue}</div>
+        <div className="text-2xl font-bold text-foreground group-hover:text-primary transition-all">{formattedValue}</div>
         {helperText && (
-          <p className="text-xs text-gray-600 mt-1">{helperText}</p>
+          <p className="text-xs text-muted-foreground mt-1">{helperText}</p>
         )}
         {trend && (
-          <div className={`flex items-center text-xs mt-2 font-semibold ${
-            trend.isPositive ? "text-emerald-600" : "text-rose-600"
-          }`}>
+          <div className={`flex items-center text-xs mt-2 font-semibold ${trend.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+            }`}>
             {trend.isPositive ? (
               <TrendingUp className="h-3 w-3 mr-1" />
             ) : (

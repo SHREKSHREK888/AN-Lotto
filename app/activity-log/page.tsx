@@ -104,8 +104,8 @@ export default function ActivityLogPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-red-700">ประวัติการใช้งาน</h1>
-            <p className="text-slate-600 mt-1">บันทึกการกระทำทั้งหมดในระบบ</p>
+            <h1 className="text-3xl font-bold tracking-tight text-primary">ประวัติการใช้งาน</h1>
+            <p className="text-muted-foreground mt-1">บันทึกการกระทำทั้งหมดในระบบ</p>
           </div>
           <Button variant="destructive" onClick={() => setShowClearDialog(true)}>
             <Trash2 className="mr-2 h-4 w-4" />
@@ -114,7 +114,7 @@ export default function ActivityLogPage() {
         </div>
 
         {/* Search */}
-        <Card className="border border-slate-200 shadow-md bg-white/95">
+        <Card className="glass-card border-none">
           <CardContent className="pt-6">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -129,10 +129,10 @@ export default function ActivityLogPage() {
         </Card>
 
         {/* Activity Logs Table */}
-        <Card className="border border-slate-200 shadow-md bg-white/95">
+        <Card className="glass-card border-none">
           <CardHeader>
-            <CardTitle className="text-red-700">รายการประวัติการใช้งาน</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-foreground">รายการประวัติการใช้งาน</CardTitle>
+            <CardDescription className="text-muted-foreground">
               ทั้งหมด {logs.length} รายการ ({filteredLogs.length} รายการที่แสดง)
             </CardDescription>
           </CardHeader>
@@ -156,7 +156,7 @@ export default function ActivityLogPage() {
                   <TableBody>
                     {filteredLogs.map((log) => (
                       <TableRow key={log.id}>
-                        <TableCell className="text-sm text-slate-600">
+                        <TableCell className="text-sm text-foreground">
                           {formatDate(log.timestamp)}
                         </TableCell>
                         <TableCell>

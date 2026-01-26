@@ -8,10 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Printer, CheckCircle, AlertCircle, Download, Image as ImageIcon } from "lucide-react";
-import { getSlipById, updateSlipStatus, getAgents } from "@/lib/storage";
+import { getSlipById, updateSlipStatus, getAgents, Agent, BannedNumberLimit } from "@/lib/storage";
 import { Slip, mockSlips } from "@/lib/mockData";
 import { useToast } from "@/hooks/use-toast";
 import { getDrawById, Draw } from "@/lib/draw";
+import { calculateSlipPayout, calculateItemPayout } from "@/lib/payout";
 import {
   Dialog,
   DialogContent,
@@ -53,13 +54,13 @@ export default function SlipDetailPage() {
     }
 
     setSlip(foundSlip);
-    
+
     // Load draw information if drawId exists
     if (foundSlip?.drawId) {
       const foundDraw = getDrawById(foundSlip.drawId);
       setDraw(foundDraw);
     }
-    
+
     setLoading(false);
   }, [slipId]);
 
@@ -86,25 +87,23 @@ export default function SlipDetailPage() {
   // Check if a number matches lottery result
   const checkItemWin = (item: any, result: any): boolean => {
     if (!result || !item) return false;
-    
+
     const number = item.number;
     let isWin = false;
-    
+
     switch (item.type) {
       case "2 ตัวบน":
-        // Match last 2 digits of 3 ตัวตรง
-        if (result.result3Straight && result.result3Straight.length >= 2) {
-          const last2 = result.result3Straight.slice(-2);
-          if (number.padStart(2, "0") === last2) {
+        // Match with result2Top
+        if (result.result2Top) {
+          if (number.padStart(2, "0") === result.result2Top.padStart(2, "0")) {
             isWin = true;
           }
         }
         break;
       case "2 ตัวล่าง":
-        // Match last 2 digits of 3 ตัวตรง
-        if (result.result3Straight && result.result3Straight.length >= 2) {
-          const last2 = result.result3Straight.slice(-2);
-          if (number.padStart(2, "0") === last2) {
+        // Match with result2Bottom
+        if (result.result2Bottom) {
+          if (number.padStart(2, "0") === result.result2Bottom.padStart(2, "0")) {
             isWin = true;
           }
         }
@@ -147,99 +146,27 @@ export default function SlipDetailPage() {
       default:
         isWin = false;
     }
-    
+
     return isWin;
   };
 
   // Calculate payout amount if winning - only for winning items
   const calculatePayout = () => {
     if (!slip || !slip.items) return 0;
-    
+
     // Get draw result if available
     const result = draw?.result || null;
     if (!result) return 0; // No result yet, can't calculate
-    
+
     // Get agent if exists to use custom payout rates
-    let agent = null;
+    let agent: Agent | null = null;
     if (slip.agentId) {
       const agents = getAgents();
-      agent = agents.find(a => a.id === slip.agentId);
+      agent = agents.find(a => a.id === slip.agentId) ?? null;
     }
 
-    let totalPayout = 0;
-    slip.items.forEach((item) => {
-      // Only calculate for winning items
-      if (!checkItemWin(item, result)) return;
-      
-      let payoutRate = 0;
-      
-      // Priority: 1. Draw payout rates, 2. Agent payout rates, 3. Default
-      // Check draw payout rates first
-      if (draw?.payoutRates) {
-        switch (item.type) {
-          case "2 ตัวบน":
-            payoutRate = draw.payoutRates["2 ตัวบน"] || agent?.payout2Digit || 70;
-            break;
-          case "2 ตัวล่าง":
-            payoutRate = draw.payoutRates["2 ตัวล่าง"] || agent?.payout2Digit || 70;
-            break;
-          case "2 ตัวกลับ":
-          case "2 กลับ (3 ตัว)":
-            payoutRate = draw.payoutRates["2 ตัวกลับ"] || agent?.payout2Digit || 70;
-            break;
-          case "3 ตัวตรง":
-          case "3 ตัวบน":
-            payoutRate = draw.payoutRates["3 ตัวตรง"] || agent?.payout3Straight || 800;
-            break;
-          case "3 กลับ":
-            payoutRate = draw.payoutRates["3 กลับ"] || agent?.payout3Straight || 800;
-            break;
-          case "3 ตัวโต๊ด":
-            payoutRate = draw.payoutRates["3 ตัวโต๊ด"] || agent?.payout3Tod || 130;
-            break;
-          case "ชุด":
-            payoutRate = draw.payoutRates["ชุด"] || agent?.payout3Tod || 130;
-            break;
-          case "วิ่ง":
-          case "วิ่งบน":
-          case "วิ่งล่าง":
-            payoutRate = draw.payoutRates["วิ่ง"] || 3;
-            break;
-          default:
-            payoutRate = 0;
-        }
-      } else {
-        // Fallback to agent or default rates
-        switch (item.type) {
-          case "2 ตัวบน":
-          case "2 ตัวล่าง":
-          case "2 ตัวกลับ":
-          case "2 กลับ (3 ตัว)":
-            payoutRate = agent?.payout2Digit || 70;
-            break;
-          case "3 ตัวตรง":
-          case "3 ตัวบน":
-          case "3 กลับ":
-            payoutRate = agent?.payout3Straight || 800;
-            break;
-          case "3 ตัวโต๊ด":
-          case "ชุด":
-            payoutRate = agent?.payout3Tod || 130;
-            break;
-          case "วิ่ง":
-          case "วิ่งบน":
-          case "วิ่งล่าง":
-            payoutRate = 3;
-            break;
-          default:
-            payoutRate = 0;
-        }
-      }
-      
-      totalPayout += item.amount * payoutRate;
-    });
-    
-    return totalPayout;
+    // Use the shared payout calculation function
+    return calculateSlipPayout(slip, result, agent, draw);
   };
 
   const payoutAmount = calculatePayout();
@@ -260,7 +187,7 @@ export default function SlipDetailPage() {
       };
       const customerName = sanitizeFilename(slip.customerName);
       document.title = `โพย_${slip.slipNumber}_${customerName}`;
-      
+
       // Also set a meta tag for better PDF filename support
       let metaTitle = document.querySelector('meta[name="pdf-title"]');
       if (!metaTitle) {
@@ -269,9 +196,9 @@ export default function SlipDetailPage() {
         document.head.appendChild(metaTitle);
       }
       metaTitle.setAttribute("content", document.title);
-      
+
       window.print();
-      
+
       // Restore original title after print
       setTimeout(() => {
         document.title = originalTitle;
@@ -286,7 +213,7 @@ export default function SlipDetailPage() {
 
   const handleDownloadPDF = async () => {
     if (!slip) return;
-    
+
     // Ensure we're in the browser
     if (typeof window === "undefined") {
       toast({
@@ -301,7 +228,7 @@ export default function SlipDetailPage() {
       // Dynamic import to avoid SSR issues - only import in browser
       const html2pdfModule = await import("html2pdf.js");
       const html2pdf = html2pdfModule.default || html2pdfModule;
-      
+
       const element = document.getElementById("slip-content");
       if (!element) {
         toast({
@@ -324,21 +251,21 @@ export default function SlipDetailPage() {
 
       const customerName = sanitizeFilename(slip.customerName);
       const filename = `โพย_${slip.slipNumber}_${customerName}.pdf`;
-      
+
       const opt = {
         margin: [10, 10, 10, 10],
         filename: filename,
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
+        html2canvas: {
+          scale: 2,
           useCORS: true,
           logging: false,
           backgroundColor: "#ffffff"
         },
-        jsPDF: { 
-          unit: "mm", 
-          format: "a4", 
-          orientation: "portrait" 
+        jsPDF: {
+          unit: "mm",
+          format: "a4",
+          orientation: "portrait"
         },
         pagebreak: { mode: ["avoid-all", "css", "legacy"] },
       };
@@ -350,10 +277,10 @@ export default function SlipDetailPage() {
       document.body.appendChild(loadingMsg);
 
       await html2pdf().set(opt).from(element).save();
-      
+
       // Remove loading message
       document.body.removeChild(loadingMsg);
-      
+
       toast({
         variant: "success",
         title: "สำเร็จ",
@@ -372,7 +299,7 @@ export default function SlipDetailPage() {
 
   const handleDownloadImage = async () => {
     if (!slip) return;
-    
+
     if (typeof window === "undefined") {
       toast({
         variant: "destructive",
@@ -384,7 +311,7 @@ export default function SlipDetailPage() {
 
     try {
       const html2canvas = (await import("html2canvas")).default;
-      
+
       const element = document.getElementById("slip-content");
       if (!element) {
         toast({
@@ -403,12 +330,12 @@ export default function SlipDetailPage() {
 
       // Scroll element into view to ensure it's fully rendered
       element.scrollIntoView({ behavior: "instant", block: "start" });
-      
+
       // Wait for fonts to load before capturing
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
-      
+
       // Wait a bit for rendering to complete
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -458,7 +385,7 @@ export default function SlipDetailPage() {
             (clonedElement as HTMLElement).style.position = "relative";
             (clonedElement as HTMLElement).style.left = "0";
             (clonedElement as HTMLElement).style.top = "0";
-            
+
             // Ensure font family is preserved
             const allElements = clonedElement.querySelectorAll("*");
             allElements.forEach((el) => {
@@ -468,7 +395,7 @@ export default function SlipDetailPage() {
               htmlEl.style.fontSize = computedStyle.fontSize;
               htmlEl.style.fontWeight = computedStyle.fontWeight;
               htmlEl.style.fontStyle = computedStyle.fontStyle;
-              
+
               // Preserve flex and justify-center for status badge alignment
               const display = computedStyle.display;
               const justifyContent = computedStyle.justifyContent;
@@ -477,7 +404,7 @@ export default function SlipDetailPage() {
                 htmlEl.style.justifyContent = justifyContent;
               }
             });
-            
+
             // Ensure status badge container is centered
             const statusContainers = clonedElement.querySelectorAll(".border-b.border-gray-300");
             statusContainers.forEach((container) => {
@@ -489,13 +416,13 @@ export default function SlipDetailPage() {
                 htmlEl.style.alignItems = "center";
               }
             });
-            
+
             // Hide no-print elements in clone
             const clonedNoPrint = clonedElement.querySelectorAll(".no-print");
             clonedNoPrint.forEach((el) => {
               (el as HTMLElement).style.display = "none";
             });
-            
+
             // Ensure body background is white
             const clonedBody = clonedDoc.body;
             if (clonedBody) {
@@ -504,7 +431,7 @@ export default function SlipDetailPage() {
               clonedBody.style.padding = "0";
               clonedBody.style.fontFamily = window.getComputedStyle(document.body).fontFamily;
             }
-            
+
             // Ensure head has font links for Thai fonts
             const clonedHead = clonedDoc.head;
             if (clonedHead) {
@@ -535,7 +462,7 @@ export default function SlipDetailPage() {
 
       // Convert canvas to image
       const imageData = canvas.toDataURL("image/png", 1.0);
-      
+
       // Create download link
       // Sanitize filename - keep Thai characters and common chars, remove problematic ones
       const sanitizeFilename = (str: string) => {
@@ -546,17 +473,17 @@ export default function SlipDetailPage() {
           .replace(/\s+/g, " ") // Normalize whitespace
           .trim();
       };
-      
+
       const customerName = sanitizeFilename(slip.customerName);
       const filename = `โพย_${slip.slipNumber}_${customerName}.png`;
       const link = document.createElement("a");
       link.download = filename;
       link.href = imageData;
       link.click();
-      
+
       // Remove loading message
       document.body.removeChild(loadingMsg);
-      
+
       toast({
         variant: "success",
         title: "สำเร็จ",
@@ -583,13 +510,13 @@ export default function SlipDetailPage() {
     // Update local state
     setSlip({ ...slip, status: "จ่ายแล้ว" });
     setShowMarkPaidDialog(false);
-    
+
     toast({
       variant: "success",
       title: "สำเร็จ",
       description: "ทำเครื่องหมายจ่ายแล้วเรียบร้อย",
     });
-    
+
     // Navigate back after a short delay
     setTimeout(() => {
       router.push("/dashboard");
@@ -668,221 +595,436 @@ export default function SlipDetailPage() {
       `}</style>
       <div className="min-h-screen bg-background p-2 sm:p-4 md:p-6 lg:p-8">
         <div className="mx-auto max-w-4xl space-y-4 sm:space-y-6">
-        {/* Action Buttons */}
-        <div className="flex flex-wrap justify-center gap-2 sm:gap-2 mb-4 no-print">
-          <Button variant="outline" onClick={handleDownloadImage} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
-            <ImageIcon className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">บันทึกรูป</span>
-            <span className="sm:hidden">รูป</span>
-          </Button>
-          <Button variant="outline" onClick={handlePrint} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
-            <Printer className="mr-2 h-4 w-4" />
-            พิมพ์
-          </Button>
-          <Button variant="outline" onClick={handleDownloadPDF} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
-            <Download className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">บันทึก PDF</span>
-            <span className="sm:hidden">PDF</span>
-          </Button>
-          <Button variant="outline" onClick={handleGoBack} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">ย้อนกลับ</span>
-            <span className="sm:hidden">กลับ</span>
-          </Button>
-          {slip.status === "ค้างจ่าย" && (
-            <Button onClick={handleMarkPaid} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
-              <CheckCircle className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">ทำเครื่องหมายจ่ายแล้ว</span>
-              <span className="sm:hidden">จ่ายแล้ว</span>
+          {/* Action Buttons */}
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-2 mb-4 no-print">
+            <Button variant="outline" onClick={handleDownloadImage} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm bg-muted/50 dark:bg-white/10 border-border dark:border-white/30 text-foreground hover:bg-muted dark:hover:bg-white/20">
+              <ImageIcon className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">บันทึกรูป</span>
+              <span className="sm:hidden">รูป</span>
             </Button>
-          )}
-        </div>
-
-        {/* Main Content - Receipt Style */}
-        <div id="slip-content" className="bg-white rounded-none shadow-lg p-4 sm:p-6 md:p-8 lg:p-10 max-w-2xl mx-auto border-2 border-gray-300" style={{ fontFamily: "'Noto Sans Thai', 'Sarabun', Arial, sans-serif" }}>
-          {/* Receipt Header */}
-          <div className="text-center mb-4 sm:mb-6 md:mb-8 pb-4 sm:pb-5 md:pb-6 border-b-2 border-dashed border-gray-400">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 tracking-tight">
-              ใบเสร็จรับเงิน
-            </h2>
-            <p className="text-sm sm:text-base text-gray-600 uppercase tracking-wider">RECEIPT</p>
-            <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-500">
-              เลขที่โพย: <span className="font-bold text-gray-900">{slip.slipNumber}</span>
-            </div>
+            <Button variant="outline" onClick={handlePrint} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm bg-muted/50 dark:bg-white/10 border-border dark:border-white/30 text-foreground hover:bg-muted dark:hover:bg-white/20">
+              <Printer className="mr-2 h-4 w-4" />
+              พิมพ์
+            </Button>
+            <Button variant="outline" onClick={handleDownloadPDF} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm bg-muted/50 dark:bg-white/10 border-border dark:border-white/30 text-foreground hover:bg-muted dark:hover:bg-white/20">
+              <Download className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">บันทึก PDF</span>
+              <span className="sm:hidden">PDF</span>
+            </Button>
+            <Button variant="outline" onClick={handleGoBack} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm bg-muted/50 dark:bg-white/10 border-border dark:border-white/30 text-foreground hover:bg-muted dark:hover:bg-white/20">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">ย้อนกลับ</span>
+              <span className="sm:hidden">กลับ</span>
+            </Button>
+            {slip.status === "ค้างจ่าย" && (
+              <Button onClick={handleMarkPaid} className="flex-1 sm:flex-initial min-w-[120px] h-10 sm:h-9 text-sm">
+                <CheckCircle className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">ทำเครื่องหมายจ่ายแล้ว</span>
+                <span className="sm:hidden">จ่ายแล้ว</span>
+              </Button>
+            )}
           </div>
 
-          {/* Receipt Info Section */}
-          <div className="space-y-4 sm:space-y-6">
-            {/* Customer & Receipt Info */}
-            <div className="space-y-3 sm:space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
-                <div>
-                  <div className="text-gray-500 mb-1 text-xs sm:text-sm">ชื่อลูกค้า</div>
-                  <div className="font-bold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
-                    {slip.customerName}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-500 mb-1 text-xs sm:text-sm">วันที่</div>
-                  <div className="font-semibold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
-                    {formatDate(slip.createdAtISO)}
-                  </div>
-                </div>
-                {draw && (
+          {/* Main Content - Receipt Style */}
+          <div id="slip-content" className="bg-white rounded-none shadow-lg p-4 sm:p-6 md:p-8 lg:p-10 max-w-2xl mx-auto border-2 border-gray-300" style={{ fontFamily: "'Noto Sans Thai', 'Sarabun', Arial, sans-serif" }}>
+            {/* Receipt Header */}
+            <div className="text-center mb-4 sm:mb-6 md:mb-8 pb-4 sm:pb-5 md:pb-6 border-b-2 border-dashed border-gray-400">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 tracking-tight">
+                ใบเสร็จรับเงิน
+              </h2>
+              <p className="text-sm sm:text-base text-gray-600 uppercase tracking-wider">RECEIPT</p>
+              <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-500">
+                เลขที่โพย: <span className="font-bold text-gray-900">{slip.slipNumber}</span>
+              </div>
+            </div>
+
+            {/* Receipt Info Section */}
+            <div className="space-y-4 sm:space-y-6">
+              {/* Customer & Receipt Info */}
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                   <div>
-                    <div className="text-gray-500 mb-1 text-xs sm:text-sm">งวด</div>
+                    <div className="text-gray-500 mb-1 text-xs sm:text-sm">ชื่อลูกค้า</div>
+                    <div className="font-bold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
+                      {slip.customerName}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 mb-1 text-xs sm:text-sm">วันที่</div>
                     <div className="font-semibold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
-                      {draw.label}
+                      {formatDate(slip.createdAtISO)}
                     </div>
                   </div>
-                )}
-                <div>
-                  <div className="text-gray-500 mb-1 text-xs sm:text-sm">สถานะ</div>
-                  <div className="font-semibold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
-                    {slip.status}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Receipt Items Table */}
-            <div className="mt-4 sm:mt-6">
-              <div className="border-t-2 border-b-2 border-gray-400 py-2 mb-2">
-                <h3 className="font-bold text-base sm:text-lg text-center text-gray-900">รายการเลขหวย</h3>
-              </div>
-              
-              {slip.items && slip.items.length > 0 ? (
-                <div className="overflow-x-auto -mx-4 sm:mx-0">
-                  <table className="w-full border-collapse min-w-[400px]">
-                    <thead>
-                      <tr className="border-b-2 border-gray-400">
-                        <th className="text-left py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700 w-10 sm:w-12">#</th>
-                        <th className="text-left py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">ประเภท</th>
-                        <th className="text-center py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">เลขที่</th>
-                        <th className="text-right py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">จำนวนเงิน</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {slip.items.map((item, index) => (
-                        <tr key={item.id} className="border-b border-dashed border-gray-300">
-                          <td className="py-2 sm:py-3 px-2 text-xs sm:text-sm text-gray-600">{index + 1}</td>
-                          <td className="py-2 sm:py-3 px-2 text-xs sm:text-sm text-gray-700 break-words">{item.type}</td>
-                          <td className="py-2 sm:py-3 px-2 text-center">
-                            <span className="font-mono font-bold text-base sm:text-lg text-gray-900">{item.number}</span>
-                          </td>
-                          <td className="py-2 sm:py-3 px-2 text-right font-semibold text-xs sm:text-sm text-gray-900">
-                            {formatCurrency(item.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-6 sm:py-8 text-gray-500 border-b border-dashed border-gray-300">
-                  <p className="text-xs sm:text-sm">ไม่มีรายละเอียดเลขหวย</p>
-                </div>
-              )}
-            </div>
-
-            {/* Receipt Summary */}
-            <div className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
-              <div className="flex justify-between items-center border-t-2 border-dashed border-gray-400 pt-2 sm:pt-3">
-                <span className="text-xs sm:text-sm text-gray-600">จำนวนรายการ:</span>
-                <span className="font-semibold text-xs sm:text-sm text-gray-900">
-                  {slip.items ? slip.items.length : 0} รายการ
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center border-t-2 border-b-2 border-gray-400 py-3 sm:py-4 bg-gray-50 -mx-4 sm:-mx-4 px-4">
-                <span className="text-base sm:text-lg font-bold text-gray-900">ยอดรวมทั้งสิ้น</span>
-                <span className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {formatCurrency(slip.totalAmount)}
-                </span>
-              </div>
-
-              {/* Payout/Loss Calculation */}
-              {(slip.status === "ถูกรางวัล" || slip.status === "ไม่ถูกรางวัล" || slip.status === "จ่ายแล้ว") && (
-                <div className="border-t-2 border-dashed border-gray-400 pt-3 sm:pt-4 space-y-2 sm:space-y-3">
-                  {slip.status === "ถูกรางวัล" || slip.status === "จ่ายแล้ว" ? (
-                    <div className="flex justify-between items-center bg-green-50 py-2 sm:py-3 px-3 sm:px-4 rounded-lg">
-                      <span className="text-sm sm:text-base font-semibold text-green-700">ถูกรางวัลได้รับ:</span>
-                      <span className="text-lg sm:text-xl font-bold text-green-700">
-                        {formatCurrency(payoutAmount)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between items-center bg-red-50 py-2 sm:py-3 px-3 sm:px-4 rounded-lg">
-                      <span className="text-sm sm:text-base font-semibold text-red-700">ไม่ถูกรางวัลเสีย:</span>
-                      <span className="text-lg sm:text-xl font-bold text-red-700">
-                        {formatCurrency(lossAmount)}
-                      </span>
+                  {draw && (
+                    <div>
+                      <div className="text-gray-500 mb-1 text-xs sm:text-sm">งวด</div>
+                      <div className="font-semibold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
+                        {draw.label}
+                      </div>
                     </div>
                   )}
-                  {slip.status === "ถูกรางวัล" || slip.status === "จ่ายแล้ว" ? (
-                    <div className="flex justify-between items-center text-xs sm:text-sm text-gray-600">
-                      <span>กำไรสุทธิ:</span>
-                      <span className={`font-semibold ${payoutAmount - lossAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(payoutAmount - lossAmount)}
-                      </span>
+                  <div>
+                    <div className="text-gray-500 mb-1 text-xs sm:text-sm">สถานะ</div>
+                    <div className="font-semibold text-gray-900 text-sm sm:text-base border-b border-gray-300 pb-1 break-words">
+                      {slip.status}
                     </div>
-                  ) : null}
-                </div>
-              )}
-              
-              <div className="text-center text-xs text-gray-500 mt-3 sm:mt-4">
-                <div className="mb-1 sm:mb-2">ยอดรวมเป็นตัวอักษร:</div>
-                <div className="font-semibold text-gray-700 text-xs sm:text-sm">
-                  {formatCurrency(slip.totalAmount)} เท่านั้น
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Receipt Footer */}
-            <div className="mt-4 sm:mt-6 md:mt-8 pt-4 sm:pt-5 md:pt-6 border-t-2 border-dashed border-gray-400 text-center">
-              <div className="text-xs text-gray-500 space-y-1">
-                <p>ขอบคุณที่ใช้บริการ</p>
-                <p className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-dashed border-gray-300">
-                  ใบเสร็จรับเงินฉบับนี้เป็นหลักฐานการชำระเงิน
-                </p>
-                <p className="mt-1 sm:mt-2">
-                  หากมีข้อสงสัยกรุณาติดต่อเจ้าหน้าที่
-                </p>
+              {/* Receipt Items Table */}
+              <div className="mt-4 sm:mt-6">
+                <div className="border-t-2 border-b-2 border-gray-400 py-2 mb-2">
+                  <h3 className="font-bold text-base sm:text-lg text-center text-gray-900">รายการเลขหวย</h3>
+                </div>
+
+                {slip.items && slip.items.length > 0 ? (
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full border-collapse min-w-[400px]">
+                      <thead>
+                        <tr className="border-b-2 border-gray-400">
+                          <th className="text-left py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700 w-10 sm:w-12">#</th>
+                          <th className="text-left py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">ประเภท</th>
+                          <th className="text-center py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">เลขที่</th>
+                          <th className="text-right py-2 sm:py-3 px-2 text-xs sm:text-sm font-bold text-gray-700">จำนวนเงิน</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {slip.items.map((item, index) => {
+                          // Check if this item is banned and get payout percent
+                          const agents = getAgents();
+                          const agent = slip.agentId ? agents.find(a => a.id === slip.agentId) ?? null : null;
+                          let isBanned = false;
+                          let bannedPercent: number | undefined;
+                          
+                          if (agent?.bannedNumbers) {
+                            let limits: BannedNumberLimit[] | undefined;
+                            const checkNumber = item.number;
+                            
+                            switch (item.type) {
+                              case "2 ตัวบน":
+                                limits = agent.bannedNumbers?.["2 ตัวบน"];
+                                break;
+                              case "2 ตัวล่าง":
+                                limits = agent.bannedNumbers?.["2 ตัวล่าง"];
+                                break;
+                              case "3 ตัวตรง":
+                              case "3 ตัวบน":
+                              case "3 กลับ":
+                                limits = agent.bannedNumbers?.["3 ตัวตรง"];
+                                break;
+                              case "3 ตัวโต๊ด":
+                              case "ชุด":
+                                limits = agent.bannedNumbers?.["3 ตัวโต๊ด"];
+                                break;
+                              case "วิ่ง":
+                              case "วิ่งบน":
+                              case "วิ่งล่าง":
+                                limits = agent.bannedNumbers?.["วิ่ง"];
+                                break;
+                            }
+                            
+                            if (limits && Array.isArray(limits)) {
+                              for (const limit of limits) {
+                                if (limit.numbers) {
+                                  // Normalize numbers for comparison (same as in lib/payout.ts)
+                                  let normalizedCheckNumber: string;
+                                  let normalizedBannedNumbers: string[];
+                                  
+                                  switch (item.type) {
+                                    case "2 ตัวบน":
+                                    case "2 ตัวล่าง":
+                                    case "2 ตัวกลับ":
+                                    case "2 กลับ (3 ตัว)":
+                                      normalizedCheckNumber = checkNumber.padStart(2, "0");
+                                      normalizedBannedNumbers = limit.numbers.map(n => n.padStart(2, "0"));
+                                      break;
+                                    case "3 ตัวตรง":
+                                    case "3 ตัวบน":
+                                    case "3 กลับ":
+                                    case "3 ตัวโต๊ด":
+                                    case "ชุด":
+                                      normalizedCheckNumber = checkNumber.padStart(3, "0");
+                                      normalizedBannedNumbers = limit.numbers.map(n => n.padStart(3, "0"));
+                                      break;
+                                    case "วิ่ง":
+                                    case "วิ่งบน":
+                                    case "วิ่งล่าง":
+                                      normalizedCheckNumber = checkNumber;
+                                      normalizedBannedNumbers = limit.numbers;
+                                      break;
+                                    default:
+                                      normalizedCheckNumber = checkNumber;
+                                      normalizedBannedNumbers = limit.numbers;
+                                  }
+                                  
+                                  if (normalizedBannedNumbers.includes(normalizedCheckNumber)) {
+                                    isBanned = true;
+                                    bannedPercent = limit.payoutPercent;
+                                    break;
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          
+                          // Calculate payout for this item if winning
+                          const itemPayout = draw?.result 
+                            ? calculateItemPayout(item, draw.result, agent, draw)
+                            : 0;
+                          
+                          return (
+                            <tr key={item.id} className="border-b border-dashed border-gray-300">
+                              <td className="py-2 sm:py-3 px-2 text-xs sm:text-sm text-gray-600">{index + 1}</td>
+                              <td className="py-2 sm:py-3 px-2 text-xs sm:text-sm text-gray-700 break-words">
+                                {item.type}
+                                {isBanned && bannedPercent !== undefined && (
+                                  <span className="ml-1 text-xs text-red-600 font-semibold">
+                                    (อั้น {bannedPercent}%)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 sm:py-3 px-2 text-center">
+                                <span className="font-mono font-bold text-base sm:text-lg text-gray-900">{item.number}</span>
+                              </td>
+                              <td className="py-2 sm:py-3 px-2 text-right font-semibold text-xs sm:text-sm text-gray-900">
+                                {formatCurrency(item.amount)}
+                                {draw?.result && itemPayout > 0 && (
+                                  <div className="text-xs text-green-600 mt-1">
+                                    → จ่าย {formatCurrency(itemPayout)}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 sm:py-8 text-gray-500 border-b border-dashed border-gray-300">
+                    <p className="text-xs sm:text-sm">ไม่มีรายละเอียดเลขหวย</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Receipt Summary */}
+              <div className="mt-4 sm:mt-6 space-y-2 sm:space-y-3">
+                <div className="flex justify-between items-center border-t-2 border-dashed border-gray-400 pt-2 sm:pt-3">
+                  <span className="text-xs sm:text-sm text-gray-600">จำนวนรายการ:</span>
+                  <span className="font-semibold text-xs sm:text-sm text-gray-900">
+                    {slip.items ? slip.items.length : 0} รายการ
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center border-t-2 border-b-2 border-gray-400 py-3 sm:py-4 bg-gray-50 -mx-4 sm:-mx-4 px-4">
+                  <span className="text-base sm:text-lg font-bold text-gray-900">ยอดรวมทั้งสิ้น</span>
+                  <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                    {formatCurrency(slip.totalAmount)}
+                  </span>
+                </div>
+
+                {/* Payout/Loss Calculation */}
+                {(slip.status === "ถูกรางวัล" || slip.status === "ไม่ถูกรางวัล" || slip.status === "จ่ายแล้ว") && (
+                  <div className="border-t-2 border-dashed border-gray-400 pt-3 sm:pt-4 space-y-2 sm:space-y-3">
+                    {slip.status === "ถูกรางวัล" || slip.status === "จ่ายแล้ว" ? (
+                      <div className="flex justify-between items-center bg-green-50 py-2 sm:py-3 px-3 sm:px-4 rounded-lg">
+                        <span className="text-sm sm:text-base font-semibold text-green-700">ถูกรางวัลได้รับ:</span>
+                        <span className="text-lg sm:text-xl font-bold text-green-700">
+                          {formatCurrency(payoutAmount)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-center bg-red-50 py-2 sm:py-3 px-3 sm:px-4 rounded-lg">
+                        <span className="text-sm sm:text-base font-semibold text-red-700">ไม่ถูกรางวัลเสีย:</span>
+                        <span className="text-lg sm:text-xl font-bold text-red-700">
+                          {formatCurrency(lossAmount)}
+                        </span>
+                      </div>
+                    )}
+                    {slip.status === "ถูกรางวัล" || slip.status === "จ่ายแล้ว" ? (
+                      <div className="flex justify-between items-center text-xs sm:text-sm text-gray-600">
+                        <span>กำไรสุทธิ:</span>
+                        <span className={`font-semibold ${payoutAmount - lossAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(payoutAmount - lossAmount)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* Banned Numbers Info */}
+                {slip.agentId && (() => {
+                  const agents = getAgents();
+                  const agent = agents.find(a => a.id === slip.agentId);
+                  if (agent?.bannedNumbers) {
+                    const hasBannedNumbers = Object.values(agent.bannedNumbers).some(
+                      limits => limits && limits.length > 0
+                    );
+                    
+                    if (hasBannedNumbers) {
+                      return (
+                        <div className="border-t-2 border-dashed border-gray-400 pt-3 sm:pt-4 mt-3 sm:mt-4">
+                          <div className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                            เลขอั้นที่กำหนดไว้ (เจ้ามือ: {agent.name})
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            {(() => {
+                              const banned2Top = agent.bannedNumbers?.["2 ตัวบน"];
+                              return banned2Top && banned2Top.length > 0 && (
+                                <div>
+                                  <span className="font-semibold text-gray-600">2 ตัวบน:</span>
+                                  {banned2Top.map((limit, idx) => (
+                                    <span key={idx} className="ml-2 text-gray-700">
+                                      {limit.numbers.join(", ")}
+                                      {limit.payoutPercent !== undefined && (
+                                        <span className="text-red-600 font-semibold ml-1">
+                                          (จ่าย {limit.payoutPercent}%)
+                                        </span>
+                                      )}
+                                      {idx < banned2Top.length - 1 && ", "}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const banned2Bottom = agent.bannedNumbers?.["2 ตัวล่าง"];
+                              return banned2Bottom && banned2Bottom.length > 0 && (
+                                <div>
+                                  <span className="font-semibold text-gray-600">2 ตัวล่าง:</span>
+                                  {banned2Bottom.map((limit, idx) => (
+                                    <span key={idx} className="ml-2 text-gray-700">
+                                      {limit.numbers.join(", ")}
+                                      {limit.payoutPercent !== undefined && (
+                                        <span className="text-red-600 font-semibold ml-1">
+                                          (จ่าย {limit.payoutPercent}%)
+                                        </span>
+                                      )}
+                                      {idx < banned2Bottom.length - 1 && ", "}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const banned3Straight = agent.bannedNumbers?.["3 ตัวตรง"];
+                              return banned3Straight && banned3Straight.length > 0 && (
+                                <div>
+                                  <span className="font-semibold text-gray-600">3 ตัวตรง:</span>
+                                  {banned3Straight.map((limit, idx) => (
+                                    <span key={idx} className="ml-2 text-gray-700">
+                                      {limit.numbers.join(", ")}
+                                      {limit.payoutPercent !== undefined && (
+                                        <span className="text-red-600 font-semibold ml-1">
+                                          (จ่าย {limit.payoutPercent}%)
+                                        </span>
+                                      )}
+                                      {idx < banned3Straight.length - 1 && ", "}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const banned3Tod = agent.bannedNumbers?.["3 ตัวโต๊ด"];
+                              return banned3Tod && banned3Tod.length > 0 && (
+                                <div>
+                                  <span className="font-semibold text-gray-600">3 ตัวโต๊ด:</span>
+                                  {banned3Tod.map((limit, idx) => (
+                                    <span key={idx} className="ml-2 text-gray-700">
+                                      {limit.numbers.join(", ")}
+                                      {limit.payoutPercent !== undefined && (
+                                        <span className="text-red-600 font-semibold ml-1">
+                                          (จ่าย {limit.payoutPercent}%)
+                                        </span>
+                                      )}
+                                      {idx < banned3Tod.length - 1 && ", "}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const bannedRunning = agent.bannedNumbers?.["วิ่ง"];
+                              return bannedRunning && bannedRunning.length > 0 && (
+                                <div>
+                                  <span className="font-semibold text-gray-600">วิ่ง:</span>
+                                  {bannedRunning.map((limit, idx) => (
+                                    <span key={idx} className="ml-2 text-gray-700">
+                                      {limit.numbers.join(", ")}
+                                      {limit.payoutPercent !== undefined && (
+                                        <span className="text-red-600 font-semibold ml-1">
+                                          (จ่าย {limit.payoutPercent}%)
+                                        </span>
+                                      )}
+                                      {idx < bannedRunning.length - 1 && ", "}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      );
+                    }
+                  }
+                  return null;
+                })()}
+
+                <div className="text-center text-xs text-gray-500 mt-3 sm:mt-4">
+                  <div className="mb-1 sm:mb-2">ยอดรวมเป็นตัวอักษร:</div>
+                  <div className="font-semibold text-gray-700 text-xs sm:text-sm">
+                    {formatCurrency(slip.totalAmount)} เท่านั้น
+                  </div>
+                </div>
+              </div>
+
+              {/* Receipt Footer */}
+              <div className="mt-4 sm:mt-6 md:mt-8 pt-4 sm:pt-5 md:pt-6 border-t-2 border-dashed border-gray-400 text-center">
+                <div className="text-xs text-gray-500 space-y-1">
+                  <p>ขอบคุณที่ใช้บริการ</p>
+                  <p className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-dashed border-gray-300">
+                    ใบเสร็จรับเงินฉบับนี้เป็นหลักฐานการชำระเงิน
+                  </p>
+                  <p className="mt-1 sm:mt-2">
+                    หากมีข้อสงสัยกรุณาติดต่อเจ้าหน้าที่
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      {/* Mark Paid Confirmation Dialog */}
-      <Dialog open={showMarkPaidDialog} onOpenChange={setShowMarkPaidDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ยืนยันการทำเครื่องหมาย</DialogTitle>
-            <DialogDescription>
-              ทำเครื่องหมายจ่ายแล้วเรียบร้อย ต้องการกลับไปแดชบอร์ดหรือไม่?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              if (!slip) return;
-              updateSlipStatus(slip.id, "จ่ายแล้ว");
-              setSlip({ ...slip, status: "จ่ายแล้ว" });
-              setShowMarkPaidDialog(false);
-              toast({
-                variant: "success",
-                title: "สำเร็จ",
-                description: "ทำเครื่องหมายจ่ายแล้วเรียบร้อย",
-              });
-            }}>
-              ไม่ออก
-            </Button>
-            <Button variant="default" onClick={confirmMarkPaid}>
-              กลับไปแดชบอร์ด
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+        {/* Mark Paid Confirmation Dialog */}
+        <Dialog open={showMarkPaidDialog} onOpenChange={setShowMarkPaidDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ยืนยันการทำเครื่องหมาย</DialogTitle>
+              <DialogDescription>
+                ทำเครื่องหมายจ่ายแล้วเรียบร้อย ต้องการกลับไปแดชบอร์ดหรือไม่?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                if (!slip) return;
+                updateSlipStatus(slip.id, "จ่ายแล้ว");
+                setSlip({ ...slip, status: "จ่ายแล้ว" });
+                setShowMarkPaidDialog(false);
+                toast({
+                  variant: "success",
+                  title: "สำเร็จ",
+                  description: "ทำเครื่องหมายจ่ายแล้วเรียบร้อย",
+                });
+              }}>
+                ไม่ออก
+              </Button>
+              <Button variant="default" onClick={confirmMarkPaid}>
+                กลับไปแดชบอร์ด
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

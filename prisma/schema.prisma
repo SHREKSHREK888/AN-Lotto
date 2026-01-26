@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Slip {
+  id           String   @id @default(cuid())
+  customerName String?
+  roundName    String?
+  status       String
+  createdAt    DateTime @default(now())
+  bets         Bet[]
+
+  @@map("slips")
+}
+
+model Bet {
+  id     String @id @default(cuid())
+  slipId String
+  type   String
+  number String
+  amount Float
+  slip   Slip   @relation(fields: [slipId], references: [id], onDelete: Cascade)
+
+  @@map("bets")
+}
+
+model Limit {
+  id           String   @id @default(cuid())
+  type         String
+  number       String
+  payoutPercent Float?
+  createdAt    DateTime @default(now())
+
+  @@map("limits")
+}

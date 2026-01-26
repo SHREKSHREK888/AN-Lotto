@@ -2,10 +2,13 @@
 
 import { useEffect } from "react";
 import { getCurrentTheme, applyTheme } from "@/lib/themes";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { mounted } = useDarkMode();
+
   useEffect(() => {
-    // Apply theme on mount
+    // Apply color theme on mount
     const currentTheme = getCurrentTheme();
     applyTheme(currentTheme.id);
 
@@ -23,6 +26,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("storage", handleThemeChange);
     };
   }, []);
+
+  // Prevent flash of unstyled content
+  if (!mounted) {
+    return <>{children}</>;
+  }
 
   return <>{children}</>;
 }

@@ -30,6 +30,7 @@ import { getSlips, saveSlip } from "@/lib/storage";
 import { Slip } from "@/lib/mockData";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useToast } from "@/hooks/use-toast";
+import { AppLayout } from "@/components/layout/app-layout";
 
 export default function DrawsPage() {
   const router = useRouter();
@@ -42,20 +43,20 @@ export default function DrawsPage() {
   const [showCloseResultDialog, setShowCloseResultDialog] = useState(false);
   const [selectedDrawForResult, setSelectedDrawForResult] = useState<Draw | null>(null);
   const [drawLabel, setDrawLabel] = useState("");
-  
+
   // Draw settings form states
   const [banned2Top, setBanned2Top] = useState("");
   const [banned2Bottom, setBanned2Bottom] = useState("");
   const [banned3Straight, setBanned3Straight] = useState("");
   const [banned3Tod, setBanned3Tod] = useState("");
   const [bannedRunning, setBannedRunning] = useState("");
-  
+
   // Payout rates form states
   const [payout2Digit, setPayout2Digit] = useState("70");
   const [payout3Straight, setPayout3Straight] = useState("800");
   const [payout3Tod, setPayout3Tod] = useState("130");
   const [payoutRunning, setPayoutRunning] = useState("3");
-  
+
   // Lottery result form states
   const [editResult2Top, setEditResult2Top] = useState("");
   const [editResult2Bottom, setEditResult2Bottom] = useState("");
@@ -74,10 +75,10 @@ export default function DrawsPage() {
 
   const loadData = () => {
     const allDraws = getDraws();
-    setDraws(allDraws.sort((a, b) => 
+    setDraws(allDraws.sort((a, b) =>
       new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime()
     ));
-    
+
     const current = getCurrentDraw();
     setCurrentDraw(current);
   };
@@ -225,20 +226,20 @@ export default function DrawsPage() {
     for (const item of slip.items) {
       const number = item.number;
       let isWin = false;
-      
+
       switch (item.type) {
         case "2 ตัวบน":
-          if (result.result3Straight.length >= 2) {
-            const last2 = result.result3Straight.slice(-2);
-            if (number.padStart(2, "0") === last2) {
+          // Match with result2Top
+          if (result.result2Top) {
+            if (number.padStart(2, "0") === result.result2Top.padStart(2, "0")) {
               isWin = true;
             }
           }
           break;
         case "2 ตัวล่าง":
-          if (result.result3Straight.length >= 2) {
-            const last2 = result.result3Straight.slice(-2);
-            if (number.padStart(2, "0") === last2) {
+          // Match with result2Bottom
+          if (result.result2Bottom) {
+            if (number.padStart(2, "0") === result.result2Bottom.padStart(2, "0")) {
               isWin = true;
             }
           }
@@ -279,10 +280,10 @@ export default function DrawsPage() {
           }
           break;
       }
-      
+
       if (isWin) return true;
     }
-    
+
     return false;
   };
 
@@ -299,7 +300,7 @@ export default function DrawsPage() {
     }
 
     const todDigits = editResult3Tod.replace(/\D/g, "");
-    
+
     if (todDigits.length !== 3) {
       toast({
         variant: "destructive",
@@ -308,7 +309,7 @@ export default function DrawsPage() {
       });
       return;
     }
-    
+
     const todArray = todDigits.split("");
 
     const newResult = {
@@ -370,247 +371,247 @@ export default function DrawsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex">
-      <Sidebar />
-      <div className="flex-1 flex flex-col lg:ml-0 pt-16 lg:pt-0">
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <div className="mx-auto max-w-7xl space-y-6">
-            {/* Header */}
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">เปิดผล/ปิดผล</h1>
-                <p className="text-muted-foreground">จัดการงวดหวย</p>
-              </div>
-              <div className="flex gap-2">
-                {currentDraw && currentDraw.status === "open" ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleOpenCloseResultDialog(currentDraw)}
-                    >
-                      <Trophy className="mr-2 h-4 w-4" />
-                      ปิดผลหวย
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => setShowCloseDialog(true)}
-                    >
-                      <Square className="mr-2 h-4 w-4" />
-                      ปิดงวด
-                    </Button>
-                  </>
-                ) : (
-                  <Button onClick={() => setShowOpenDialog(true)}>
-                    <Play className="mr-2 h-4 w-4" />
-                    เปิดงวดใหม่
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Current Draw */}
-            {currentDraw && currentDraw.status === "open" && (
-              <Card className="border-2 border-green-500">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-green-600" />
-                    งวดที่เปิดอยู่
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm text-muted-foreground">ชื่องวด</Label>
-                      <p className="text-2xl font-bold mt-1">{currentDraw.label}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm text-muted-foreground">เปิดเมื่อ</Label>
-                      <p className="text-lg mt-1">{formatDate(currentDraw.openedAt)}</p>
-                    </div>
-                    
-                    {/* Show banned numbers if any */}
-                    {currentDraw.bannedNumbers && Object.keys(currentDraw.bannedNumbers).length > 0 && (
-                      <div className="space-y-2 pt-2 border-t">
-                        <Label className="text-sm font-semibold">เลขอั้น:</Label>
-                        <div className="space-y-1">
-                          {currentDraw.bannedNumbers["2 ตัวบน"] && currentDraw.bannedNumbers["2 ตัวบน"].length > 0 && (
-                            <p className="text-sm">
-                              <span className="font-medium">2 ตัวบน:</span> {currentDraw.bannedNumbers["2 ตัวบน"].join(", ")}
-                            </p>
-                          )}
-                          {currentDraw.bannedNumbers["2 ตัวล่าง"] && currentDraw.bannedNumbers["2 ตัวล่าง"].length > 0 && (
-                            <p className="text-sm">
-                              <span className="font-medium">2 ตัวล่าง:</span> {currentDraw.bannedNumbers["2 ตัวล่าง"].join(", ")}
-                            </p>
-                          )}
-                          {currentDraw.bannedNumbers["3 ตัวตรง"] && currentDraw.bannedNumbers["3 ตัวตรง"].length > 0 && (
-                            <p className="text-sm">
-                              <span className="font-medium">3 ตัวตรง:</span> {currentDraw.bannedNumbers["3 ตัวตรง"].join(", ")}
-                            </p>
-                          )}
-                          {currentDraw.bannedNumbers["3 ตัวโต๊ด"] && currentDraw.bannedNumbers["3 ตัวโต๊ด"].length > 0 && (
-                            <p className="text-sm">
-                              <span className="font-medium">3 ตัวโต๊ด:</span> {currentDraw.bannedNumbers["3 ตัวโต๊ด"].join(", ")}
-                            </p>
-                          )}
-                          {currentDraw.bannedNumbers["วิ่ง"] && currentDraw.bannedNumbers["วิ่ง"].length > 0 && (
-                            <p className="text-sm">
-                              <span className="font-medium">วิ่ง:</span> {currentDraw.bannedNumbers["วิ่ง"].join(", ")}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Show payout rates if any */}
-                    {currentDraw.payoutRates && Object.keys(currentDraw.payoutRates).length > 0 && (
-                      <div className="space-y-2 pt-2 border-t">
-                        <Label className="text-sm font-semibold">เปอร์เซ็นต์การจ่าย:</Label>
-                        <div className="space-y-1">
-                          {currentDraw.payoutRates["2 ตัวบน"] && (
-                            <p className="text-sm">
-                              <span className="font-medium">2 ตัว:</span> {currentDraw.payoutRates["2 ตัวบน"]}%
-                            </p>
-                          )}
-                          {currentDraw.payoutRates["3 ตัวตรง"] && (
-                            <p className="text-sm">
-                              <span className="font-medium">3 ตัวตรง:</span> {currentDraw.payoutRates["3 ตัวตรง"]}%
-                            </p>
-                          )}
-                          {currentDraw.payoutRates["3 ตัวโต๊ด"] && (
-                            <p className="text-sm">
-                              <span className="font-medium">3 ตัวโต๊ด:</span> {currentDraw.payoutRates["3 ตัวโต๊ด"]}%
-                            </p>
-                          )}
-                          {currentDraw.payoutRates["วิ่ง"] && (
-                            <p className="text-sm">
-                              <span className="font-medium">วิ่ง:</span> {currentDraw.payoutRates["วิ่ง"]}%
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <Badge variant="default" className="bg-green-600">
-                      เปิดอยู่
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* No Current Draw */}
-            {!currentDraw && (
-              <Card>
-                <CardContent className="py-12">
-                  <div className="text-center space-y-4">
-                    <Calendar className="mx-auto h-12 w-12 text-muted-foreground" />
-                    <div>
-                      <h3 className="text-lg font-semibold">ไม่มีงวดที่เปิดอยู่</h3>
-                      <p className="text-muted-foreground mt-2">
-                        เปิดงวดใหม่เพื่อเริ่มรับโพยหวย
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Draws History */}
-            <Card>
-              <CardHeader>
-                <CardTitle>ประวัติงวด</CardTitle>
-                <CardDescription>งวดหวยทั้งหมด</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {draws.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>ยังไม่มีงวด</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {draws.map((draw) => (
-                      <Card
-                        key={draw.id}
-                        className={draw.status === "open" ? "border-green-500" : ""}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="font-bold text-lg">{draw.label}</span>
-                                <Badge
-                                  variant={draw.status === "open" ? "default" : "secondary"}
-                                  className={draw.status === "open" ? "bg-green-600" : ""}
-                                >
-                                  {draw.status === "open" ? "เปิดอยู่" : "ปิดแล้ว"}
-                                </Badge>
-                                {draw.result && (
-                                  <Badge variant="outline">
-                                    มีผลหวยแล้ว
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                เปิดเมื่อ: {formatDate(draw.openedAt)}
-                              </p>
-                              {draw.closedAt && (
-                                <p className="text-sm text-muted-foreground">
-                                  ปิดเมื่อ: {formatDate(draw.closedAt)}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              {draw.result ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => router.push(`/lottery-result?drawId=${draw.id}`)}
-                                >
-                                  <Trophy className="mr-2 h-4 w-4" />
-                                  ดูผล
-                                </Button>
-                              ) : (
-                                draw.status === "closed" && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleOpenCloseResultDialog(draw)}
-                                  >
-                                    <Trophy className="mr-2 h-4 w-4" />
-                                    ปิดผลหวย
-                                  </Button>
-                                )
-                              )}
-                              {draw.status === "closed" && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => router.push(`/payment?drawId=${draw.id}`)}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  จ่ายหวย
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+    <AppLayout>
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">เปิดผล/ปิดผล</h1>
+            <p className="text-muted-foreground">จัดการงวดหวย</p>
           </div>
-        </main>
+          <div className="flex gap-2">
+            {currentDraw && currentDraw.status === "open" ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => handleOpenCloseResultDialog(currentDraw)}
+                  className="bg-primary/10 border-primary/20 text-primary hover:bg-primary/20"
+                >
+                  <Trophy className="mr-2 h-4 w-4" />
+                  ปิดผลหวย
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowCloseDialog(true)}
+                >
+                  <Square className="mr-2 h-4 w-4" />
+                  ปิดงวด
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setShowOpenDialog(true)} className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 shadow-lg shadow-primary/20">
+                <Play className="mr-2 h-4 w-4" />
+                เปิดงวดใหม่
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Current Draw */}
+        {currentDraw && currentDraw.status === "open" && (
+          <Card className="glass-card border-none relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-green-500/10 rounded-full blur-3xl -z-10 -translate-y-1/2 translate-x-1/2" />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-foreground">
+                <Calendar className="h-5 w-5 text-green-400" />
+                งวดที่เปิดอยู่
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm text-muted-foreground">ชื่องวด</Label>
+                  <p className="text-2xl font-bold mt-1 text-foreground">{currentDraw.label}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">เปิดเมื่อ</Label>
+                  <p className="text-lg mt-1 text-foreground">{formatDate(currentDraw.openedAt)}</p>
+                </div>
+
+                {/* Show banned numbers if any */}
+                {currentDraw.bannedNumbers && Object.keys(currentDraw.bannedNumbers).length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-border dark:border-white/10">
+                    <Label className="text-sm font-semibold text-foreground">เลขอั้น:</Label>
+                    <div className="space-y-1">
+                      {currentDraw.bannedNumbers["2 ตัวบน"] && currentDraw.bannedNumbers["2 ตัวบน"].length > 0 && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">2 ตัวบน:</span> {currentDraw.bannedNumbers["2 ตัวบน"].join(", ")}
+                        </p>
+                      )}
+                      {currentDraw.bannedNumbers["2 ตัวล่าง"] && currentDraw.bannedNumbers["2 ตัวล่าง"].length > 0 && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">2 ตัวล่าง:</span> {currentDraw.bannedNumbers["2 ตัวล่าง"].join(", ")}
+                        </p>
+                      )}
+                      {currentDraw.bannedNumbers["3 ตัวตรง"] && currentDraw.bannedNumbers["3 ตัวตรง"].length > 0 && (
+                        <p className="text-sm text-gray-300">
+                          <span className="font-medium text-gray-400">3 ตัวตรง:</span> {currentDraw.bannedNumbers["3 ตัวตรง"].join(", ")}
+                        </p>
+                      )}
+                      {currentDraw.bannedNumbers["3 ตัวโต๊ด"] && currentDraw.bannedNumbers["3 ตัวโต๊ด"].length > 0 && (
+                        <p className="text-sm text-gray-300">
+                          <span className="font-medium text-gray-400">3 ตัวโต๊ด:</span> {currentDraw.bannedNumbers["3 ตัวโต๊ด"].join(", ")}
+                        </p>
+                      )}
+                      {currentDraw.bannedNumbers["วิ่ง"] && currentDraw.bannedNumbers["วิ่ง"].length > 0 && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">วิ่ง:</span> {currentDraw.bannedNumbers["วิ่ง"].join(", ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show payout rates if any */}
+                {currentDraw.payoutRates && Object.keys(currentDraw.payoutRates).length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-border dark:border-white/10">
+                    <Label className="text-sm font-semibold text-foreground">เปอร์เซ็นต์การจ่าย:</Label>
+                    <div className="space-y-1">
+                      {currentDraw.payoutRates["2 ตัวบน"] && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">2 ตัว:</span> {currentDraw.payoutRates["2 ตัวบน"]}%
+                        </p>
+                      )}
+                      {currentDraw.payoutRates["3 ตัวตรง"] && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">3 ตัวตรง:</span> {currentDraw.payoutRates["3 ตัวตรง"]}%
+                        </p>
+                      )}
+                      {currentDraw.payoutRates["3 ตัวโต๊ด"] && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">3 ตัวโต๊ด:</span> {currentDraw.payoutRates["3 ตัวโต๊ด"]}%
+                        </p>
+                      )}
+                      {currentDraw.payoutRates["วิ่ง"] && (
+                        <p className="text-sm text-foreground">
+                          <span className="font-medium text-muted-foreground">วิ่ง:</span> {currentDraw.payoutRates["วิ่ง"]}%
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                  เปิดอยู่
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* No Current Draw */}
+        {!currentDraw && (
+          <Card className="glass-card border-none">
+            <CardContent className="py-12">
+              <div className="text-center space-y-4">
+                <Calendar className="mx-auto h-12 w-12 text-gray-500" />
+                <div>
+                  <h3 className="text-lg font-semibold text-white">ไม่มีงวดที่เปิดอยู่</h3>
+                  <p className="text-gray-400 mt-2">
+                    เปิดงวดใหม่เพื่อเริ่มรับโพยหวย
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Draws History */}
+        <Card className="glass-card border-none">
+          <CardHeader>
+            <CardTitle className="text-white">ประวัติงวด</CardTitle>
+            <CardDescription className="text-gray-400">งวดหวยทั้งหมด</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {draws.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>ยังไม่มีงวด</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {draws.map((draw) => (
+                  <Card
+                    key={draw.id}
+                    className={`bg-white/5 border-none transition-all hover:bg-white/10 ${draw.status === "open" ? "ring-1 ring-green-500/50" : ""}`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-bold text-lg text-white">{draw.label}</span>
+                            <Badge
+                              variant={draw.status === "open" ? "default" : "secondary"}
+                              className={draw.status === "open" ? "bg-green-600" : "bg-white/10 text-gray-400"}
+                            >
+                              {draw.status === "open" ? "เปิดอยู่" : "ปิดแล้ว"}
+                            </Badge>
+                            {draw.result && (
+                              <Badge variant="outline" className="border-primary/50 text-primary bg-primary/10">
+                                มีผลหวยแล้ว
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-400">
+                            เปิดเมื่อ: {formatDate(draw.openedAt)}
+                          </p>
+                          {draw.closedAt && (
+                            <p className="text-sm text-gray-400">
+                              ปิดเมื่อ: {formatDate(draw.closedAt)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {draw.result ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/lottery-result?drawId=${draw.id}`)}
+                              className="bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
+                            >
+                              <Trophy className="mr-2 h-4 w-4" />
+                              ดูผล
+                            </Button>
+                          ) : (
+                            draw.status === "closed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenCloseResultDialog(draw)}
+                                className="bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
+                              >
+                                <Trophy className="mr-2 h-4 w-4" />
+                                ปิดผลหวย
+                              </Button>
+                            )
+                          )}
+                          {draw.status === "closed" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/payment?drawId=${draw.id}`)}
+                              className="bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10"
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              จ่ายหวย
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Open Draw Dialog */}
       <Dialog open={showOpenDialog} onOpenChange={setShowOpenDialog}>
-        <DialogContent>
+        <DialogContent className="glass-card border-none text-white">
           <DialogHeader>
             <DialogTitle>เปิดงวดใหม่</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-400">
               เปิดงวดหวยใหม่เพื่อเริ่มรับโพยหวย
             </DialogDescription>
           </DialogHeader>
@@ -622,17 +623,18 @@ export default function DrawsPage() {
                 placeholder="เช่น งวดวันที่ 1 ก.พ. 2569"
                 value={drawLabel}
                 onChange={(e) => setDrawLabel(e.target.value)}
+                className="glass-input text-white"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
+            <Button variant="ghost" onClick={() => {
               setShowOpenDialog(false);
               setDrawLabel("");
-            }}>
+            }} className="hover:bg-white/10 hover:text-white">
               ยกเลิก
             </Button>
-            <Button onClick={handleOpenDraw}>
+            <Button onClick={handleOpenDraw} className="bg-primary hover:bg-primary/90">
               <Play className="mr-2 h-4 w-4" />
               เปิดงวด
             </Button>
@@ -642,16 +644,16 @@ export default function DrawsPage() {
 
       {/* Close Draw Dialog */}
       <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
-        <DialogContent>
+        <DialogContent className="glass-card border-none text-white">
           <DialogHeader>
             <DialogTitle>ปิดงวด</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-400">
               คุณแน่ใจหรือไม่ว่าต้องการปิดงวด {currentDraw?.label}?
               หลังจากปิดงวดแล้วจะไม่สามารถรับโพยหวยใหม่ได้
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCloseDialog(false)}>
+            <Button variant="ghost" onClick={() => setShowCloseDialog(false)} className="hover:bg-white/10 hover:text-white">
               ยกเลิก
             </Button>
             <Button variant="destructive" onClick={handleCloseDraw}>
@@ -664,10 +666,10 @@ export default function DrawsPage() {
 
       {/* Close Lottery Result Dialog */}
       <Dialog open={showCloseResultDialog} onOpenChange={setShowCloseResultDialog}>
-        <DialogContent>
+        <DialogContent className="glass-card border-none text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ปิดผลหวย</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-400">
               {selectedDrawForResult && `กรอกเลขผลหวยสำหรับงวด ${selectedDrawForResult.label}`}
             </DialogDescription>
           </DialogHeader>
@@ -680,6 +682,7 @@ export default function DrawsPage() {
                 maxLength={2}
                 value={editResult2Top}
                 onChange={(e) => setEditResult2Top(e.target.value.replace(/\D/g, ""))}
+                className="glass-input text-white"
               />
             </div>
             <div className="space-y-2">
@@ -690,6 +693,7 @@ export default function DrawsPage() {
                 maxLength={2}
                 value={editResult2Bottom}
                 onChange={(e) => setEditResult2Bottom(e.target.value.replace(/\D/g, ""))}
+                className="glass-input text-white"
               />
             </div>
             <div className="space-y-2">
@@ -707,6 +711,7 @@ export default function DrawsPage() {
                     setEditResult3Tod(value);
                   }
                 }}
+                className="glass-input text-white"
               />
             </div>
             <div className="space-y-2">
@@ -717,28 +722,29 @@ export default function DrawsPage() {
                 maxLength={3}
                 value={editResult3Tod}
                 onChange={(e) => setEditResult3Tod(e.target.value.replace(/\D/g, ""))}
+                className="glass-input text-white"
               />
-              <p className="text-xs text-muted-foreground">
-                {editResult3Straight.length === 3 
+              <p className="text-xs text-gray-500">
+                {editResult3Straight.length === 3
                   ? `เลข 3 ตัวโต๊ดดึงมาจากเลข 3 ตัวตรงอัตโนมัติ: ${editResult3Straight} (สามารถแก้ไขได้)`
                   : "กรอกเลข 3 ตัวตรงก่อน หรือกรอกเลข 3 ตัวต่อกัน เช่น 199"}
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
+            <Button variant="ghost" onClick={() => {
               setShowCloseResultDialog(false);
               setSelectedDrawForResult(null);
-            }}>
+            }} className="hover:bg-white/10 hover:text-white">
               ยกเลิก
             </Button>
-            <Button onClick={handleCloseLotteryResult}>
+            <Button onClick={handleCloseLotteryResult} className="bg-primary hover:bg-primary/90">
               <Save className="mr-2 h-4 w-4" />
               ปิดผลหวย
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppLayout>
   );
 }

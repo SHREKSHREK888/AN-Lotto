@@ -20,12 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, X, Save, Receipt, RotateCcw, Send } from "lucide-react";
-import { saveSlip, getAgents, Agent } from "@/lib/storage";
+import { saveSlip, getAgents, Agent, BannedNumberLimit } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { LotteryItem } from "@/lib/mockData";
 import { Sidebar } from "@/components/layout/sidebar";
-import { getCurrentDraw, getDrawById } from "@/lib/draw";
+import { getCurrentDraw, getDrawById, Draw } from "@/lib/draw";
 import { logActivity } from "@/lib/activity-log";
+import { AppLayout } from "@/components/layout/app-layout";
+import { calculateItemPayout } from "@/lib/payout";
 
 export default function EntryPage() {
   const router = useRouter();
@@ -35,21 +37,21 @@ export default function EntryPage() {
   const [items, setItems] = useState<LotteryItem[]>([]);
   const [activeTab, setActiveTab] = useState("3straight");
   const [gameType, setGameType] = useState<"3ตัว" | "2ตัว" | "เลขวิ่ง">("3ตัว"); // Main game type selection
-  
+
   // Add new states for running types
   const [numberRunningTop, setNumberRunningTop] = useState("");
   const [amountRunningTop, setAmountRunningTop] = useState("");
   const [numberRunningBottom, setNumberRunningBottom] = useState("");
   const [amountRunningBottom, setAmountRunningBottom] = useState("");
-  
+
   // Add state for 2 ตัวกลับ
   const [number2Reverse, setNumber2Reverse] = useState("");
   const [amount2Reverse, setAmount2Reverse] = useState("");
-  
+
   // Add state for 3 ตัวกลับ (separate from straight reverse)
   const [number3Reverse, setNumber3Reverse] = useState("");
   const [amount3Reverse, setAmount3Reverse] = useState("");
-  
+
   // Add state for 2 กลับ in 3 ตัว section
   const [number2ReverseIn3, setNumber2ReverseIn3] = useState("");
   const [amount2ReverseIn3, setAmount2ReverseIn3] = useState("");
@@ -92,8 +94,8 @@ export default function EntryPage() {
   const [number2Bottom, setNumber2Bottom] = useState("");
   const [amount2Bottom, setAmount2Bottom] = useState("");
   const [reverse2BottomManual, setReverse2BottomManual] = useState(false);
-  
-  
+
+
   const [number3Straight, setNumber3Straight] = useState("");
   const [amount3Straight, setAmount3Straight] = useState("");
   const [amount3StraightQuick, setAmount3StraightQuick] = useState(""); // Quick entry amount
@@ -122,11 +124,11 @@ export default function EntryPage() {
   // Helper function to generate all permutations of 3 digits (6 combinations)
   const generatePermutations = (num: string): string[] => {
     if (num.length !== 3) return [num];
-    
+
     const digits = num.split("");
     const permutations: string[] = [];
     const used: boolean[] = [false, false, false];
-    
+
     const backtrack = (current: string[]) => {
       if (current.length === 3) {
         const perm = current.join("");
@@ -135,7 +137,7 @@ export default function EntryPage() {
         }
         return;
       }
-      
+
       for (let i = 0; i < 3; i++) {
         if (!used[i]) {
           used[i] = true;
@@ -146,7 +148,7 @@ export default function EntryPage() {
         }
       }
     };
-    
+
     backtrack([]);
     return permutations;
   };
@@ -159,10 +161,10 @@ export default function EntryPage() {
   // Example: 356 -> เลือก (3,5), (3,6), (5,6) -> 35, 36, 56
   const generate2ReverseFrom3Digits = (num: string): string[] => {
     if (num.length !== 3) return [];
-    
+
     const digits = num.split("");
     const pairs: string[] = [];
-    
+
     // Generate all 2-digit pairs from 3 digits: (0,1), (0,2), (1,2)
     // "2 กลับ 2 ครั้ง" = เลือก 2 หลักจาก 3 หลัก (เลขเดิม)
     // เพราะกลับ 2 ครั้ง = กลับมาเหมือนเดิม
@@ -170,14 +172,14 @@ export default function EntryPage() {
       for (let j = i + 1; j < 3; j++) {
         // เลือกคู่ 2 หลัก: เช่น 35 จาก 356
         const pair = digits[i] + digits[j];
-        
+
         // เพิ่มเลขเดิมเท่านั้น (เพราะกลับ 2 ครั้ง = กลับมาเหมือนเดิม)
         if (!pairs.includes(pair)) {
           pairs.push(pair);
         }
       }
     }
-    
+
     return pairs;
   };
 
@@ -188,7 +190,7 @@ export default function EntryPage() {
     reverseCount: number;
   } | null => {
     const trimmed = input.trim();
-    
+
     // Pattern: number amountPattern "เท่ากลับ" reverseCount "กลับ"
     // Example: "445 50x50x50 เท่ากลับ 3 กลับ"
     const match = trimmed.match(/^(\d+)\s+([\dxX]+)\s+เท่ากลับ\s+(\d+)\s+กลับ$/);
@@ -196,15 +198,15 @@ export default function EntryPage() {
       const number = match[1];
       const amountPattern = match[2];
       const reverseCount = parseInt(match[3]);
-      
+
       // Parse amounts: "50x50x50" or "50X50X50" -> [50, 50, 50]
       const amounts = amountPattern.split(/[xX]/).map(a => parseFloat(a.trim())).filter(a => !isNaN(a));
-      
+
       if (amounts.length > 0 && reverseCount > 0 && reverseCount <= 6) {
         return { number, amounts, reverseCount };
       }
     }
-    
+
     // Pattern: number amountPattern (simpler version)
     // Example: "445 50x50x50"
     const simpleMatch = trimmed.match(/^(\d+)\s+([\dxX]+)$/);
@@ -212,19 +214,19 @@ export default function EntryPage() {
       const number = simpleMatch[1];
       const amountPattern = simpleMatch[2];
       const amounts = amountPattern.split(/[xX]/).map(a => parseFloat(a.trim())).filter(a => !isNaN(a));
-      
+
       if (amounts.length > 0) {
         return { number, amounts, reverseCount: amounts.length };
       }
     }
-    
+
     return null;
   };
 
   const addItem = (
-    type: string, 
-    number: string, 
-    amount: string, 
+    type: string,
+    number: string,
+    amount: string,
     reverse: boolean = false,
     quickEntryInput?: string // New parameter for quick entry
   ) => {
@@ -233,7 +235,7 @@ export default function EntryPage() {
       const parsed = parseQuickEntry(quickEntryInput);
       if (parsed) {
         const { number: parsedNumber, amounts, reverseCount } = parsed;
-        
+
         // Generate permutations
         let numbersToAdd: string[] = [];
         if (parsedNumber.length === 3) {
@@ -248,7 +250,7 @@ export default function EntryPage() {
         } else {
           numbersToAdd = [parsedNumber];
         }
-        
+
         // Create items with individual amounts
         const newItems: LotteryItem[] = numbersToAdd.map((num, index) => ({
           id: `${Date.now()}-${index}`,
@@ -256,14 +258,14 @@ export default function EntryPage() {
           number: num,
           amount: amounts[index] || amounts[amounts.length - 1] || parseFloat(amount) || 0,
         }));
-        
+
         setItems([...items, ...newItems]);
         toast({
           variant: "success",
           title: "เพิ่มสำเร็จ",
           description: `เพิ่มเลข ${numbersToAdd.length} หมายเลข (${numbersToAdd.join(", ")})`,
         });
-        
+
         // Reset inputs
         setNumber3Straight("");
         setAmount3Straight("");
@@ -271,7 +273,7 @@ export default function EntryPage() {
         return;
       }
     }
-    
+
     if (!number || !amount || parseFloat(amount) <= 0) {
       toast({
         variant: "destructive",
@@ -383,13 +385,143 @@ export default function EntryPage() {
     }).format(amount);
   };
 
+  // Calculate estimated payout even without result (using base rates)
+  const calculateEstimatedPayoutWithoutResult = () => {
+    if (items.length === 0) return 0;
+    
+    const selectedAgent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) : null;
+    let totalPayout = 0;
+    
+    items.forEach((item) => {
+      // Get base rate
+      let baseRate = 0;
+      switch (item.type) {
+        case "2 ตัวบน":
+        case "2 ตัวล่าง":
+        case "2 ตัวกลับ":
+        case "2 กลับ (3 ตัว)":
+          baseRate = selectedAgent?.payout2Digit || 70;
+          break;
+        case "3 ตัวตรง":
+        case "3 ตัวบน":
+        case "3 กลับ":
+          baseRate = selectedAgent?.payout3Straight || 800;
+          break;
+        case "3 ตัวโต๊ด":
+        case "ชุด":
+          baseRate = selectedAgent?.payout3Tod || 130;
+          break;
+        case "วิ่ง":
+        case "วิ่งบน":
+        case "วิ่งล่าง":
+          baseRate = 3;
+          break;
+      }
+      
+      // Apply banned number adjustment if applicable
+      let finalRate = baseRate;
+      if (selectedAgent?.bannedNumbers) {
+        let limits: BannedNumberLimit[] | undefined;
+        const checkNumber = item.number;
+        
+        switch (item.type) {
+          case "2 ตัวบน":
+            limits = selectedAgent.bannedNumbers?.["2 ตัวบน"];
+            break;
+          case "2 ตัวล่าง":
+            limits = selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
+            break;
+          case "3 ตัวตรง":
+          case "3 ตัวบน":
+          case "3 กลับ":
+            limits = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
+            break;
+          case "3 ตัวโต๊ด":
+          case "ชุด":
+            limits = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
+            break;
+          case "วิ่ง":
+          case "วิ่งบน":
+          case "วิ่งล่าง":
+            limits = selectedAgent.bannedNumbers?.["วิ่ง"];
+            break;
+        }
+        
+        if (limits && Array.isArray(limits)) {
+          for (const limit of limits) {
+            if (limit.numbers) {
+              let normalizedCheckNumber: string;
+              let normalizedBannedNumbers: string[];
+              
+              switch (item.type) {
+                case "2 ตัวบน":
+                case "2 ตัวล่าง":
+                case "2 ตัวกลับ":
+                case "2 กลับ (3 ตัว)":
+                  normalizedCheckNumber = checkNumber.padStart(2, "0");
+                  normalizedBannedNumbers = limit.numbers.map(n => n.padStart(2, "0"));
+                  break;
+                case "3 ตัวตรง":
+                case "3 ตัวบน":
+                case "3 กลับ":
+                case "3 ตัวโต๊ด":
+                case "ชุด":
+                  normalizedCheckNumber = checkNumber.padStart(3, "0");
+                  normalizedBannedNumbers = limit.numbers.map(n => n.padStart(3, "0"));
+                  break;
+                case "วิ่ง":
+                case "วิ่งบน":
+                case "วิ่งล่าง":
+                  normalizedCheckNumber = checkNumber;
+                  normalizedBannedNumbers = limit.numbers;
+                  break;
+                default:
+                  normalizedCheckNumber = checkNumber;
+                  normalizedBannedNumbers = limit.numbers;
+              }
+              
+              if (normalizedBannedNumbers.includes(normalizedCheckNumber)) {
+                if (limit.payoutPercent !== undefined) {
+                  finalRate = baseRate * (limit.payoutPercent / 100);
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      totalPayout += item.amount * finalRate;
+    });
+    
+    return totalPayout;
+  };
+
+  const estimatedPayoutWithoutResult = calculateEstimatedPayoutWithoutResult();
+
+  // Calculate estimated payout with result (if available)
+  const calculateEstimatedPayout = () => {
+    if (!currentDraw?.result || items.length === 0) return 0;
+    
+    const selectedAgent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) ?? null : null;
+    let totalPayout = 0;
+    
+    items.forEach((item) => {
+      totalPayout += calculateItemPayout(item, currentDraw.result, selectedAgent, currentDraw);
+    });
+    
+    return totalPayout;
+  };
+
+  const estimatedPayout = calculateEstimatedPayout();
+
   // Check if number is banned
   const checkBannedNumber = (item: LotteryItem, draw: any): boolean => {
     if (!draw?.bannedNumbers) return false;
-    
+
     const banned = draw.bannedNumbers;
     const number = item.number;
-    
+
     switch (item.type) {
       case "2 ตัวบน":
         if (banned["2 ตัวบน"]?.includes(number.padStart(2, "0"))) {
@@ -422,7 +554,7 @@ export default function EntryPage() {
         }
         break;
     }
-    
+
     return false;
   };
 
@@ -465,68 +597,120 @@ export default function EntryPage() {
         const agentBannedItems: LotteryItem[] = [];
         items.forEach(item => {
           const number = item.number;
-          let bannedList: string[] | undefined;
-          
+          let limits: BannedNumberLimit[] | undefined;
+
           // Match banned numbers based on item type
           switch (item.type) {
             case "2 ตัวบน":
             case "2 ตัวล่าง":
             case "2 ตัวกลับ":
             case "2 กลับ (3 ตัว)":
-              bannedList = item.type === "2 ตัวบน" 
+              limits = item.type === "2 ตัวบน"
                 ? selectedAgent.bannedNumbers?.["2 ตัวบน"]
                 : item.type === "2 ตัวล่าง"
-                ? selectedAgent.bannedNumbers?.["2 ตัวล่าง"]
-                : selectedAgent.bannedNumbers?.["2 ตัวบน"] || selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
-              if (bannedList) {
+                  ? selectedAgent.bannedNumbers?.["2 ตัวล่าง"]
+                  : selectedAgent.bannedNumbers?.["2 ตัวบน"] || selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
+              if (limits && Array.isArray(limits)) {
                 const normalizedNumber = number.padStart(2, "0");
-                const normalizedBanned = bannedList.map(n => n.padStart(2, "0"));
-                if (normalizedBanned.includes(normalizedNumber)) {
-                  agentBannedItems.push(item);
+                for (const limit of limits) {
+                  if (limit.numbers) {
+                    const normalizedBanned = limit.numbers.map(n => n.padStart(2, "0"));
+                    if (normalizedBanned.includes(normalizedNumber)) {
+                      agentBannedItems.push(item);
+                      break;
+                    }
+                  }
                 }
               }
               break;
             case "3 ตัวตรง":
             case "3 ตัวบน":
             case "3 กลับ":
-              bannedList = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
-              if (bannedList) {
+              limits = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
+              if (limits && Array.isArray(limits)) {
                 const normalizedNumber = number.padStart(3, "0");
-                const normalizedBanned = bannedList.map(n => n.padStart(3, "0"));
-                if (normalizedBanned.includes(normalizedNumber)) {
-                  agentBannedItems.push(item);
+                for (const limit of limits) {
+                  if (limit.numbers) {
+                    const normalizedBanned = limit.numbers.map(n => n.padStart(3, "0"));
+                    if (normalizedBanned.includes(normalizedNumber)) {
+                      agentBannedItems.push(item);
+                      break;
+                    }
+                  }
                 }
               }
               break;
             case "3 ตัวโต๊ด":
             case "ชุด":
-              bannedList = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
-              if (bannedList) {
+              limits = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
+              if (limits && Array.isArray(limits)) {
                 const normalizedNumber = number.padStart(3, "0");
-                const normalizedBanned = bannedList.map(n => n.padStart(3, "0"));
-                if (normalizedBanned.includes(normalizedNumber)) {
-                  agentBannedItems.push(item);
+                for (const limit of limits) {
+                  if (limit.numbers) {
+                    const normalizedBanned = limit.numbers.map(n => n.padStart(3, "0"));
+                    if (normalizedBanned.includes(normalizedNumber)) {
+                      agentBannedItems.push(item);
+                      break;
+                    }
+                  }
                 }
               }
               break;
             case "วิ่ง":
             case "วิ่งบน":
             case "วิ่งล่าง":
-              bannedList = selectedAgent.bannedNumbers?.["วิ่ง"];
-              if (bannedList && bannedList.includes(number)) {
-                agentBannedItems.push(item);
+              limits = selectedAgent.bannedNumbers?.["วิ่ง"];
+              if (limits && Array.isArray(limits)) {
+                for (const limit of limits) {
+                  if (limit.numbers && limit.numbers.includes(number)) {
+                    agentBannedItems.push(item);
+                    break;
+                  }
+                }
               }
               break;
           }
         });
-        
+
         if (agentBannedItems.length > 0) {
+          // Show warning but allow saving - payout will be calculated with percent limit
+          const bannedInfo = agentBannedItems.map(item => {
+            const number = item.number;
+            let limits: BannedNumberLimit[] | undefined;
+            switch (item.type) {
+              case "2 ตัวบน":
+                limits = selectedAgent.bannedNumbers?.["2 ตัวบน"];
+                break;
+              case "2 ตัวล่าง":
+                limits = selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
+                break;
+              case "3 ตัวตรง":
+              case "3 ตัวบน":
+              case "3 กลับ":
+                limits = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
+                break;
+              case "3 ตัวโต๊ด":
+              case "ชุด":
+                limits = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
+                break;
+              case "วิ่ง":
+              case "วิ่งบน":
+              case "วิ่งล่าง":
+                limits = selectedAgent.bannedNumbers?.["วิ่ง"];
+                break;
+            }
+            const limit = limits?.find(l => l.numbers?.includes(number));
+            const percent = limit?.payoutPercent;
+            return percent !== undefined 
+              ? `${item.type} ${item.number} (จ่าย ${percent}%)`
+              : `${item.type} ${item.number}`;
+          }).join(", ");
+          
           toast({
-            variant: "destructive",
-            title: "มีเลขอั้นของเจ้ามือ",
-            description: `เลข ${agentBannedItems.map(i => `${i.type} ${i.number}`).join(", ")} เป็นเลขอั้นของเจ้ามือ ${selectedAgent.name} ไม่สามารถบันทึกได้`,
+            variant: "default",
+            title: "คำเตือน: มีเลขอั้นของเจ้ามือ",
+            description: `เลข ${bannedInfo} เป็นเลขอั้นของเจ้ามือ ${selectedAgent.name} จะคำนวณ payout ตามเปอร์เซ็นต์ที่กำหนด`,
           });
-          return;
         }
       }
     }
@@ -589,34 +773,33 @@ export default function EntryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/70 to-indigo-50/70 flex">
-      <Sidebar />
-      <div className="flex-1 flex flex-col lg:ml-0 pt-16 lg:pt-0">
-        <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
-          <div className="mx-auto max-w-6xl space-y-6">
-            {/* Header */}
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight text-red-700">คีย์หวย</h1>
-                <p className="text-gray-600">
-                  {currentDraw ? currentDraw.label : "บันทึกโพยหวยใหม่"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={handleSave}>
-                  <Save className="mr-2 h-4 w-4" />
-                  บันทึกโพย
-                </Button>
-              </div>
-            </div>
+    <AppLayout>
+      <div className="mx-auto max-w-6xl space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+              คีย์หวย
+            </h1>
+            <p className="text-muted-foreground">
+              {currentDraw ? currentDraw.label : "บันทึกโพยหวยใหม่"}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleSave} className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-white shadow-lg shadow-primary/20">
+              <Save className="mr-2 h-4 w-4" />
+              บันทึกโพย
+            </Button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Left: Input Form */}
           <div className="lg:col-span-2 space-y-6">
             {/* Customer Info */}
-            <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+            <Card className="glass-card border-none">
               <CardHeader>
-                <CardTitle className="text-red-700">ข้อมูลลูกค้า</CardTitle>
+                <CardTitle className="text-foreground">ข้อมูลลูกค้า</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -679,9 +862,9 @@ export default function EntryPage() {
             </Card>
 
             {/* Lottery Entry */}
-            <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+            <Card className="glass-card border-none">
               <CardHeader>
-                <CardTitle className="text-red-700 text-center">เลือกประเภทที่ต้องการเล่น</CardTitle>
+                <CardTitle className="text-foreground text-center">เลือกประเภทที่ต้องการเล่น</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Main Game Type Selection */}
@@ -689,11 +872,10 @@ export default function EntryPage() {
                   <Button
                     variant={gameType === "3ตัว" ? "default" : "outline"}
                     size="default"
-                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${
-                      gameType === "3ตัว" 
-                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                        : "bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
+                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${gameType === "3ตัว"
+                      ? "bg-gradient-to-r from-primary to-secondary text-white border-transparent"
+                      : "bg-muted/50 dark:bg-white/5 border-2 border-border dark:border-white/10 text-foreground hover:bg-muted dark:hover:bg-white/10"
+                      }`}
                     onClick={() => {
                       setGameType("3ตัว");
                       setActiveTab("3straight");
@@ -704,11 +886,10 @@ export default function EntryPage() {
                   <Button
                     variant={gameType === "2ตัว" ? "default" : "outline"}
                     size="default"
-                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${
-                      gameType === "2ตัว" 
-                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                        : "bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
+                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${gameType === "2ตัว"
+                      ? "bg-gradient-to-r from-primary to-secondary text-white border-transparent"
+                      : "bg-muted/50 dark:bg-white/5 border-2 border-border dark:border-white/10 text-foreground hover:bg-muted dark:hover:bg-white/10"
+                      }`}
                     onClick={() => {
                       setGameType("2ตัว");
                       setActiveTab("2top");
@@ -719,11 +900,10 @@ export default function EntryPage() {
                   <Button
                     variant={gameType === "เลขวิ่ง" ? "default" : "outline"}
                     size="default"
-                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${
-                      gameType === "เลขวิ่ง" 
-                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                        : "bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
-                    }`}
+                    className={`flex-1 max-w-[150px] h-10 text-base font-semibold rounded-lg ${gameType === "เลขวิ่ง"
+                      ? "bg-gradient-to-r from-primary to-secondary text-white border-transparent"
+                      : "bg-muted/50 dark:bg-white/5 border-2 border-border dark:border-white/10 text-foreground hover:bg-muted dark:hover:bg-white/10"
+                      }`}
                     onClick={() => {
                       setGameType("เลขวิ่ง");
                       setActiveTab("runningtop");
@@ -740,13 +920,12 @@ export default function EntryPage() {
                       {/* 3 ตัวบน (3 ตัวตรง) */}
                       <button
                         onClick={() => setActiveTab("3straight")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "3straight"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "3straight"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "3straight" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "3straight" ? "text-primary-foreground" : "text-foreground"}`}>
                           บน (3ตัวตรง)
                         </div>
                       </button>
@@ -754,13 +933,12 @@ export default function EntryPage() {
                       {/* 3 ตัวโต๊ด */}
                       <button
                         onClick={() => setActiveTab("3tod")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "3tod"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "3tod"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "3tod" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "3tod" ? "text-primary-foreground" : "text-foreground"}`}>
                           3 ตัวโต๊ด
                         </div>
                       </button>
@@ -768,13 +946,12 @@ export default function EntryPage() {
                       {/* 3 กลับ */}
                       <button
                         onClick={() => setActiveTab("3reverse")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "3reverse"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "3reverse"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "3reverse" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "3reverse" ? "text-primary-foreground" : "text-foreground"}`}>
                           3 กลับ
                         </div>
                       </button>
@@ -789,13 +966,12 @@ export default function EntryPage() {
                       {/* 2 ตัวบน */}
                       <button
                         onClick={() => setActiveTab("2top")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "2top"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "2top"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "2top" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "2top" ? "text-primary-foreground" : "text-foreground"}`}>
                           2 ตัวบน
                         </div>
                       </button>
@@ -803,13 +979,12 @@ export default function EntryPage() {
                       {/* 2 ตัวล่าง */}
                       <button
                         onClick={() => setActiveTab("2bottom")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "2bottom"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "2bottom"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "2bottom" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "2bottom" ? "text-primary-foreground" : "text-foreground"}`}>
                           2 ตัวล่าง
                         </div>
                       </button>
@@ -817,13 +992,12 @@ export default function EntryPage() {
                       {/* 2 ตัวกลับ */}
                       <button
                         onClick={() => setActiveTab("2reverse")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "2reverse"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "2reverse"
+                          ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
+                          : "border-gray-200 bg-white hover:border-gray-300"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "2reverse" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "2reverse" ? "text-white" : "text-foreground"}`}>
                           2 ตัวกลับ
                         </div>
                       </button>
@@ -837,13 +1011,12 @@ export default function EntryPage() {
                       {/* วิ่งบน */}
                       <button
                         onClick={() => setActiveTab("runningtop")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "runningtop"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "runningtop"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "runningtop" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "runningtop" ? "text-primary-foreground" : "text-foreground"}`}>
                           วิ่งบน
                         </div>
                       </button>
@@ -851,13 +1024,12 @@ export default function EntryPage() {
                       {/* วิ่งล่าง */}
                       <button
                         onClick={() => setActiveTab("runningbottom")}
-                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${
-                          activeTab === "runningbottom"
-                            ? "border-orange-400 bg-gradient-to-r from-orange-400 to-orange-500 shadow-md"
-                            : "border-gray-200 bg-white hover:border-gray-300"
-                        }`}
+                        className={`flex items-center justify-center rounded-lg border-2 p-2.5 transition-all ${activeTab === "runningbottom"
+                          ? "border-primary bg-primary/20 shadow-md shadow-primary/10"
+                          : "border-border dark:border-white/10 bg-muted/50 dark:bg-white/5 hover:border-primary/50 dark:hover:border-white/20 hover:bg-muted dark:hover:bg-white/10"
+                          }`}
                       >
-                        <div className={`font-semibold text-sm ${activeTab === "runningbottom" ? "text-white" : "text-gray-700"}`}>
+                        <div className={`font-semibold text-sm ${activeTab === "runningbottom" ? "text-primary-foreground" : "text-foreground"}`}>
                           วิ่งล่าง
                         </div>
                       </button>
@@ -1395,10 +1567,10 @@ export default function EntryPage() {
 
           {/* Right: Summary */}
           <div className="space-y-6">
-            <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+            <Card className="glass-card border-none">
               <CardHeader>
-                <CardTitle className="text-red-700">สรุปโพย</CardTitle>
-                <CardDescription className="text-gray-600">รายการเลขหวยที่เพิ่มแล้ว</CardDescription>
+                <CardTitle className="text-foreground">สรุปโพย</CardTitle>
+                <CardDescription className="text-muted-foreground">รายการเลขหวยที่เพิ่มแล้ว</CardDescription>
               </CardHeader>
               <CardContent>
                 {items.length === 0 ? (
@@ -1409,30 +1581,160 @@ export default function EntryPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between rounded-md border p-3"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{item.type}</Badge>
-                            <span className="font-mono font-semibold">{item.number}</span>
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {formatCurrency(item.amount)}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeItem(item.id)}
-                          className="h-8 w-8"
+                    {items.map((item) => {
+                      // Check if this item is banned and calculate estimated payout
+                      const selectedAgent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) : null;
+                      let isBanned = false;
+                      let bannedPercent: number | undefined;
+                      let baseRate = 0;
+                      let finalRate = 0;
+                      
+                      // Get base rate
+                      switch (item.type) {
+                        case "2 ตัวบน":
+                        case "2 ตัวล่าง":
+                        case "2 ตัวกลับ":
+                        case "2 กลับ (3 ตัว)":
+                          baseRate = selectedAgent?.payout2Digit || 70;
+                          break;
+                        case "3 ตัวตรง":
+                        case "3 ตัวบน":
+                        case "3 กลับ":
+                          baseRate = selectedAgent?.payout3Straight || 800;
+                          break;
+                        case "3 ตัวโต๊ด":
+                        case "ชุด":
+                          baseRate = selectedAgent?.payout3Tod || 130;
+                          break;
+                        case "วิ่ง":
+                        case "วิ่งบน":
+                        case "วิ่งล่าง":
+                          baseRate = 3;
+                          break;
+                      }
+                      
+                      finalRate = baseRate;
+                      
+                      // Check if this item is banned (even without result)
+                      if (selectedAgent?.bannedNumbers) {
+                        let limits: BannedNumberLimit[] | undefined;
+                        const checkNumber = item.number;
+                        
+                        switch (item.type) {
+                          case "2 ตัวบน":
+                            limits = selectedAgent.bannedNumbers?.["2 ตัวบน"];
+                            break;
+                          case "2 ตัวล่าง":
+                            limits = selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
+                            break;
+                          case "3 ตัวตรง":
+                          case "3 ตัวบน":
+                          case "3 กลับ":
+                            limits = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
+                            break;
+                          case "3 ตัวโต๊ด":
+                          case "ชุด":
+                            limits = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
+                            break;
+                          case "วิ่ง":
+                          case "วิ่งบน":
+                          case "วิ่งล่าง":
+                            limits = selectedAgent.bannedNumbers?.["วิ่ง"];
+                            break;
+                        }
+                        
+                        if (limits && Array.isArray(limits)) {
+                          for (const limit of limits) {
+                            if (limit.numbers) {
+                              // Normalize numbers for comparison (same as in lib/payout.ts)
+                              let normalizedCheckNumber: string;
+                              let normalizedBannedNumbers: string[];
+                              
+                              switch (item.type) {
+                                case "2 ตัวบน":
+                                case "2 ตัวล่าง":
+                                case "2 ตัวกลับ":
+                                case "2 กลับ (3 ตัว)":
+                                  normalizedCheckNumber = checkNumber.padStart(2, "0");
+                                  normalizedBannedNumbers = limit.numbers.map(n => n.padStart(2, "0"));
+                                  break;
+                                case "3 ตัวตรง":
+                                case "3 ตัวบน":
+                                case "3 กลับ":
+                                case "3 ตัวโต๊ด":
+                                case "ชุด":
+                                  normalizedCheckNumber = checkNumber.padStart(3, "0");
+                                  normalizedBannedNumbers = limit.numbers.map(n => n.padStart(3, "0"));
+                                  break;
+                                case "วิ่ง":
+                                case "วิ่งบน":
+                                case "วิ่งล่าง":
+                                  normalizedCheckNumber = checkNumber;
+                                  normalizedBannedNumbers = limit.numbers;
+                                  break;
+                                default:
+                                  normalizedCheckNumber = checkNumber;
+                                  normalizedBannedNumbers = limit.numbers;
+                              }
+                              
+                              if (normalizedBannedNumbers.includes(normalizedCheckNumber)) {
+                                isBanned = true;
+                                bannedPercent = limit.payoutPercent;
+                                if (limit.payoutPercent !== undefined) {
+                                  finalRate = baseRate * (limit.payoutPercent / 100);
+                                }
+                                break;
+                              }
+                            }
+                          }
+                        }
+                      }
+                      
+                      // Calculate estimated payout for this item
+                      const estimatedPayoutForItem = currentDraw?.result 
+                        ? calculateItemPayout(item, currentDraw.result, selectedAgent ?? null, currentDraw)
+                        : item.amount * finalRate;
+                      
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded-md border p-3"
                         >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{item.type}</Badge>
+                              <span className="font-mono font-semibold">{item.number}</span>
+                              {isBanned && bannedPercent !== undefined && (
+                                <Badge variant="destructive" className="text-xs">
+                                  อั้น {bannedPercent}%
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              {formatCurrency(item.amount)}
+                              {estimatedPayoutForItem > 0 && (
+                                <span className="ml-2 text-green-400">
+                                  → จ่าย {formatCurrency(estimatedPayoutForItem)}
+                                  {isBanned && bannedPercent !== undefined && (
+                                    <span className="ml-1 text-xs text-red-400">
+                                      (อัตรา: {finalRate})
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItem(item.id)}
+                            className="h-8 w-8"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                     <Separator />
                     <div className="space-y-2">
                       {selectedAgentId && agents.length > 0 && (
@@ -1450,6 +1752,191 @@ export default function EntryPage() {
                         <span>ยอดรวม</span>
                         <span>{formatCurrency(totalAmount)}</span>
                       </div>
+                      
+                      {/* Profit/Loss Summary - Show calculation even without result */}
+                      {items.length > 0 && (
+                        <div className="pt-3 border-t space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground mb-2">
+                            สรุปการคำนวณกำไร
+                          </div>
+                          
+                          {/* Estimated Payout */}
+                          {(() => {
+                            const payout = currentDraw?.result ? estimatedPayout : estimatedPayoutWithoutResult;
+                            const hasResult = !!currentDraw?.result;
+                            
+                            if (payout > 0) {
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between text-sm bg-green-500/10 border border-green-500/20 rounded-lg p-2">
+                                    <span className="text-muted-foreground">
+                                      {hasResult ? "ถูกรางวัลจะจ่าย:" : "ประมาณการจ่าย (ถูกรางวัล):"}
+                                    </span>
+                                    <span className="font-semibold text-green-400">{formatCurrency(payout)}</span>
+                                  </div>
+                                  
+                                  {/* Profit Calculation */}
+                                  <div className="flex items-center justify-between text-sm">
+                                    <span className="text-muted-foreground">กำไรสุทธิ:</span>
+                                    <span className={`font-semibold ${payout - totalAmount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {formatCurrency(payout - totalAmount)}
+                                    </span>
+                                  </div>
+                                </>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center justify-between text-sm bg-gray-500/10 border border-gray-500/20 rounded-lg p-2">
+                                  <span className="text-muted-foreground">
+                                    {hasResult ? "ถูกรางวัลจะจ่าย:" : "ประมาณการจ่าย (ถูกรางวัล):"}
+                                  </span>
+                                  <span className="font-semibold text-muted-foreground">฿0</span>
+                                </div>
+                              );
+                            }
+                          })()}
+                          
+                          {/* Banned Numbers Summary */}
+                          {(() => {
+                            const selectedAgent = selectedAgentId ? agents.find(a => a.id === selectedAgentId) : null;
+                            if (!selectedAgent?.bannedNumbers) return null;
+                            
+                            const bannedItems: Array<{ type: string; number: string; percent: number; baseRate: number; finalRate: number; amount: number }> = [];
+                            
+                            items.forEach(item => {
+                              let limits: BannedNumberLimit[] | undefined;
+                              const checkNumber = item.number;
+                              
+                              // Get base rate
+                              let baseRate = 0;
+                              switch (item.type) {
+                                case "2 ตัวบน":
+                                case "2 ตัวล่าง":
+                                case "2 ตัวกลับ":
+                                case "2 กลับ (3 ตัว)":
+                                  baseRate = selectedAgent?.payout2Digit || 70;
+                                  break;
+                                case "3 ตัวตรง":
+                                case "3 ตัวบน":
+                                case "3 กลับ":
+                                  baseRate = selectedAgent?.payout3Straight || 800;
+                                  break;
+                                case "3 ตัวโต๊ด":
+                                case "ชุด":
+                                  baseRate = selectedAgent?.payout3Tod || 130;
+                                  break;
+                                case "วิ่ง":
+                                case "วิ่งบน":
+                                case "วิ่งล่าง":
+                                  baseRate = 3;
+                                  break;
+                              }
+                              
+                              switch (item.type) {
+                                case "2 ตัวบน":
+                                  limits = selectedAgent.bannedNumbers?.["2 ตัวบน"];
+                                  break;
+                                case "2 ตัวล่าง":
+                                  limits = selectedAgent.bannedNumbers?.["2 ตัวล่าง"];
+                                  break;
+                                case "3 ตัวตรง":
+                                case "3 ตัวบน":
+                                case "3 กลับ":
+                                  limits = selectedAgent.bannedNumbers?.["3 ตัวตรง"];
+                                  break;
+                                case "3 ตัวโต๊ด":
+                                case "ชุด":
+                                  limits = selectedAgent.bannedNumbers?.["3 ตัวโต๊ด"];
+                                  break;
+                                case "วิ่ง":
+                                case "วิ่งบน":
+                                case "วิ่งล่าง":
+                                  limits = selectedAgent.bannedNumbers?.["วิ่ง"];
+                                  break;
+                              }
+                              
+                              if (limits && Array.isArray(limits)) {
+                                for (const limit of limits) {
+                                  if (limit.numbers) {
+                                    let normalizedCheckNumber: string;
+                                    let normalizedBannedNumbers: string[];
+                                    
+                                    switch (item.type) {
+                                      case "2 ตัวบน":
+                                      case "2 ตัวล่าง":
+                                      case "2 ตัวกลับ":
+                                      case "2 กลับ (3 ตัว)":
+                                        normalizedCheckNumber = checkNumber.padStart(2, "0");
+                                        normalizedBannedNumbers = limit.numbers.map(n => n.padStart(2, "0"));
+                                        break;
+                                      case "3 ตัวตรง":
+                                      case "3 ตัวบน":
+                                      case "3 กลับ":
+                                      case "3 ตัวโต๊ด":
+                                      case "ชุด":
+                                        normalizedCheckNumber = checkNumber.padStart(3, "0");
+                                        normalizedBannedNumbers = limit.numbers.map(n => n.padStart(3, "0"));
+                                        break;
+                                      case "วิ่ง":
+                                      case "วิ่งบน":
+                                      case "วิ่งล่าง":
+                                        normalizedCheckNumber = checkNumber;
+                                        normalizedBannedNumbers = limit.numbers;
+                                        break;
+                                      default:
+                                        normalizedCheckNumber = checkNumber;
+                                        normalizedBannedNumbers = limit.numbers;
+                                    }
+                                    
+                                    if (normalizedBannedNumbers.includes(normalizedCheckNumber) && limit.payoutPercent !== undefined) {
+                                      const finalRate = baseRate * (limit.payoutPercent / 100);
+                                      const itemPayout = currentDraw?.result
+                                        ? calculateItemPayout(item, currentDraw.result, selectedAgent ?? null, currentDraw)
+                                        : item.amount * finalRate;
+                                      
+                                      bannedItems.push({
+                                        type: item.type,
+                                        number: item.number,
+                                        percent: limit.payoutPercent,
+                                        baseRate: baseRate,
+                                        finalRate: finalRate,
+                                        amount: itemPayout
+                                      });
+                                      break;
+                                    }
+                                  }
+                                }
+                              }
+                            });
+                            
+                            if (bannedItems.length > 0) {
+                              return (
+                                <div className="mt-3 pt-3 border-t space-y-1">
+                                  <div className="text-xs font-semibold text-muted-foreground mb-1">
+                                    เลขอั้นที่ใช้ในการคำนวณ:
+                                  </div>
+                                  {bannedItems.map((banned, idx) => (
+                                    <div key={idx} className="text-xs bg-red-500/10 border border-red-500/20 rounded p-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">
+                                          {banned.type} <span className="font-mono font-semibold">{banned.number}</span>
+                                        </span>
+                                        <span className="text-red-400 font-semibold">
+                                          อั้น {banned.percent}% → จ่าย {formatCurrency(banned.amount)}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        อัตราจ่าย: {banned.baseRate} × {banned.percent}% = {banned.finalRate}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1457,9 +1944,9 @@ export default function EntryPage() {
             </Card>
 
             {/* Quick Actions */}
-            <Card className="border border-slate-200 shadow-md bg-white/95 backdrop-blur-sm">
+            <Card className="glass-card border-none">
               <CardHeader>
-                <CardTitle className="text-red-700">การดำเนินการ</CardTitle>
+                <CardTitle className="text-foreground">การดำเนินการ</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Button
@@ -1482,9 +1969,7 @@ export default function EntryPage() {
             </Card>
           </div>
         </div>
-          </div>
-        </main>
       </div>
-    </div>
+    </AppLayout>
   );
 }
